@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "My Desktop App",
+    "version": "1.0.0",
+    "bundle_id": "com.example.desktopapp"
+  },
+  "window": {
+    "title": "Simple C Desktop App",
+    "width": 800,
+    "height": 600,
+    "min_width": 400,
+    "min_height": 300,
+    "center": true,
+    "resizable": true,
+    "minimizable": true,
+    "maximizable": true,
+    "closable": true
+  },
+  "platform": {
+    "macos": {
+      "toolbar": {
+        "enabled": false
+      }
+    }
+  },
+  "development": {
+    "debug_mode": true,
+    "console_logging": true
+  }
+}

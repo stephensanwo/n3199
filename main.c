@@ -1,80 +1,108 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
+#include "config.h"
+#include "platform.h"
 
-#ifdef __APPLE__
-#include <objc/objc.h>
-#include <objc/message.h>
-#include <objc/runtime.h>
-#include <CoreGraphics/CoreGraphics.h>
+// Global window reference for signal handling
+static app_window_t* g_main_window = NULL;
 
-// Create and show a simple macOS window
-void create_window() {
-    printf("Creating macOS window...\n");
+void signal_handler(int signal) {
+    printf("\nReceived signal %d, shutting down gracefully...\n", signal);
     
-    // Get NSApplication class
-    Class NSApp = objc_getClass("NSApplication");
-    id app = ((id (*)(id, SEL))objc_msgSend)((id)NSApp, sel_registerName("sharedApplication"));
+    if (g_main_window) {
+        platform_destroy_window(g_main_window);
+        g_main_window = NULL;
+    }
     
-    // Set activation policy to regular app (NSApplicationActivationPolicyRegular = 0)
-    ((void (*)(id, SEL, long))objc_msgSend)(app, sel_registerName("setActivationPolicy:"), 0);
+    platform_cleanup();
+    exit(0);
+}
+
+void setup_signal_handlers() {
+    signal(SIGINT, signal_handler);   // Ctrl+C
+    signal(SIGTERM, signal_handler);  // Termination signal
+}
+
+int main(int argc, char* argv[]) {
+    printf("=== C Desktop Application Framework ===\n");
+    printf("Platform: %s\n", PLATFORM_NAME);
+    printf("Version: 1.0.0\n\n");
     
-    // Create window
-    Class NSWindow = objc_getClass("NSWindow");
-    Class NSString = objc_getClass("NSString");
+    // Setup signal handlers for graceful shutdown
+    setup_signal_handlers();
     
-    // Create window frame (x, y, width, height)
-    CGRect frame = CGRectMake(100, 100, 800, 600);
+    // Load configuration
+    const char* config_file = "config.json";
+    if (argc > 1) {
+        config_file = argv[1];
+    }
     
-    // Window style mask: titled(1), closable(2), miniaturizable(4), resizable(8)
-    unsigned long styleMask = 1 | 2 | 4 | 8;
+    printf("Loading configuration from: %s\n", config_file);
+    app_configuration_t* config = load_config(config_file);
     
-    // Allocate window
-    id window = ((id (*)(id, SEL))objc_msgSend)((id)NSWindow, sel_registerName("alloc"));
+    if (!config) {
+        printf("Error: Failed to load configuration\n");
+        return 1;
+    }
     
-    // Initialize window
-    window = ((id (*)(id, SEL, CGRect, unsigned long, unsigned long, int))objc_msgSend)(
-        window, 
-        sel_registerName("initWithContentRect:styleMask:backing:defer:"), 
-        frame, 
-        styleMask, 
-        2, // NSBackingStoreBuffered
-        0  // defer = NO
-    );
+    // Print configuration if in debug mode
+    if (config->development.debug_mode) {
+        print_config(config);
+    }
     
-    // Set window title
-    id title = ((id (*)(id, SEL, const char*))objc_msgSend)(
-        (id)NSString, 
-        sel_registerName("stringWithUTF8String:"), 
-        "My First C Desktop App"
-    );
-    ((void (*)(id, SEL, id))objc_msgSend)(window, sel_registerName("setTitle:"), title);
+    // Initialize platform
+    if (platform_init() != 0) {
+        printf("Error: Failed to initialize platform\n");
+        free_config(config);
+        return 1;
+    }
     
-    // Center and show window
-    ((void (*)(id, SEL))objc_msgSend)(window, sel_registerName("center"));
-    ((void (*)(id, SEL, id))objc_msgSend)(window, sel_registerName("makeKeyAndOrderFront:"), window);
+    // Create main window
+    printf("Creating application window...\n");
+    app_window_t* window = platform_create_window(config);
+    g_main_window = window;
     
-    // Activate app
-    ((void (*)(id, SEL, int))objc_msgSend)(app, sel_registerName("activateIgnoringOtherApps:"), 1);
+    if (!window) {
+        printf("Error: Failed to create window\n");
+        platform_cleanup();
+        free_config(config);
+        return 1;
+    }
     
-    printf("Window created and displayed!\n");
-    printf("Press Ctrl+C to quit.\n");
+    // Show the window
+    printf("Showing window...\n");
+    platform_show_window(window);
+    
+    // Add some demo toolbar items if toolbar is enabled
+    #ifdef PLATFORM_MACOS
+    if (config->macos.toolbar.enabled) {
+        platform_macos_add_toolbar_item(window, "refresh", "Refresh");
+        platform_macos_add_toolbar_item(window, "settings", "Settings");
+    }
+    #endif
+    
+    printf("Application started successfully!\n");
+    printf("Window configuration:\n");
+    printf("  - Title: %s\n", config->window.title);
+    printf("  - Size: %dx%d\n", config->window.width, config->window.height);
+    printf("  - Resizable: %s\n", config->window.resizable ? "Yes" : "No");
+    
+    #ifdef PLATFORM_MACOS
+    printf("  - Toolbar: %s\n", config->macos.toolbar.enabled ? "Enabled" : "Disabled");
+    #endif
+    
+    printf("\nStarting application event loop...\n");
+    printf("Close the window or press Ctrl+C to quit.\n\n");
     
     // Run the application event loop
-    ((void (*)(id, SEL))objc_msgSend)(app, sel_registerName("run"));
-}
-
-#else
-void create_window() {
-    printf("This application is designed for macOS only.\n");
-    printf("For other platforms, different window libraries would be needed.\n");
-}
-#endif
-
-int main() {
-    printf("Starting C Desktop Application...\n");
-    printf("Platform: macOS\n");
+    platform_run_app(window);
     
-    create_window();
+    // Cleanup (this will only be reached if the app quits normally)
+    printf("Application shutting down...\n");
+    platform_destroy_window(window);
+    platform_cleanup();
+    free_config(config);
     
     return 0;
 } 
