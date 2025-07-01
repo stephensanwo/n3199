@@ -14,7 +14,9 @@
     "resizable": true,
     "minimizable": true,
     "maximizable": true,
-    "closable": true
+    "closable": true,
+    "frameless": false,
+    "transparent": false
   },
   "menubar": {
     "enabled": true,
@@ -168,11 +170,14 @@
   },
   "webview": {
     "enabled": true,
-    "url": "file:///Users/stephen.sanwo/Desktop/n3199/www/index.html",
-    "user_agent": "DesktopApp/1.0 WebKit",
     "developer_extras": true,
     "javascript_enabled": true,
-    "allow_file_access": true,
-    "allow_universal_access": false
+    "framework": {
+      "build_command": "pnpm run build",
+      "dev_command": "pnpm run dev",
+      "dev_url": "http://localhost:5174",
+      "build_dir": "dist",
+      "dev_mode": true
+    }
   }
 }

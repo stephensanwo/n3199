@@ -1,35 +1,45 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
+#include <stdbool.h>
 #include "config.h"
+#include "webview_framework.h"
 
 // Forward declarations for platform-specific window handles
-typedef struct platform_window platform_window_t;
+typedef void* platform_window_handle_t;
+typedef void* platform_webview_handle_t;
 
-// Platform-independent window management interface
+// Window structure
 typedef struct {
-    void* native_window;
-    const app_configuration_t* config;
-    bool is_visible;
-    bool is_focused;
+    app_configuration_t* config;
+    platform_window_handle_t native_window;
+    platform_webview_handle_t webview;
 } app_window_t;
 
-// Window creation and management functions
-app_window_t* platform_create_window(const app_configuration_t* config);
+// Platform initialization and cleanup
+bool platform_init(const app_configuration_t* config);
+void platform_cleanup(void);
+
+// Window management
+bool platform_create_window(app_window_t* window);
 void platform_show_window(app_window_t* window);
 void platform_hide_window(app_window_t* window);
-void platform_set_window_title(app_window_t* window, const char* title);
-void platform_set_window_size(app_window_t* window, int width, int height);
-void platform_center_window(app_window_t* window);
-void platform_destroy_window(app_window_t* window);
+void platform_close_window(app_window_t* window);
 
-// Application lifecycle
-void platform_run_app(app_window_t* window);
-void platform_quit_app(void);
+// WebView management
+void platform_setup_webview(app_window_t* window);
+void platform_webview_load_url(app_window_t* window, const char* url);
+void platform_webview_evaluate_javascript(app_window_t* window, const char* script);
 
-// Platform-specific initialization
-int platform_init(void);
-void platform_cleanup(void);
+// Menu management
+void platform_setup_menubar(app_window_t* window);
+void platform_handle_menu_action(const char* action);
+
+// Event loop
+void platform_run_event_loop(void);
+
+// Global configuration
+extern app_configuration_t* app_config;
 
 // Toolbar management (platform-specific)
 #ifdef PLATFORM_MACOS
@@ -45,14 +55,7 @@ void platform_windows_setup_toolbar(app_window_t* window);
 void platform_linux_setup_toolbar(app_window_t* window);
 #endif
 
-// Function declarations
-void platform_setup_menubar(app_window_t* window);
-void platform_handle_menu_action(const char* action);
-
 // WebView functions
-void platform_setup_webview(app_window_t* window);
-void platform_webview_load_url(app_window_t* window, const char* url);
 void platform_webview_load_html(app_window_t* window, const char* html);
-void platform_webview_evaluate_javascript(app_window_t* window, const char* script);
 
 #endif // PLATFORM_H 

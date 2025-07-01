@@ -76,10 +76,14 @@ static char* find_nested_json_value(const char* json, const char* section, const
     snprintf(section_key, sizeof(section_key), "\"%s\"", section);
     
     char* section_pos = strstr(json, section_key);
-    if (!section_pos) return NULL;
+    if (!section_pos) {
+        return NULL;
+    }
     
     char* brace = strchr(section_pos, '{');
-    if (!brace) return NULL;
+    if (!brace) {
+        return NULL;
+    }
     
     // Find the end of this section
     int brace_count = 1;
@@ -97,6 +101,7 @@ static char* find_nested_json_value(const char* json, const char* section, const
     section_content[section_length] = '\0';
     
     char* result = find_json_value(section_content, key);
+    
     free(section_content);
     
     return result;
@@ -278,6 +283,60 @@ static void parse_menu_config(const char* json, const char* menu_name, menu_conf
     }
 }
 
+static void parse_webview_framework_config(const char* json, webview_framework_config_t* config) {
+    // Set defaults first
+    strcpy(config->build_command, "pnpm run build");
+    strcpy(config->dev_command, "pnpm run dev");
+    strcpy(config->dev_url, "http://localhost:5174");
+    strcpy(config->build_dir, "dist");
+    config->dev_mode = true;
+
+    // Find the webview section first
+    char* webview_content = find_nested_json_value(json, "webview", "framework");
+    if (!webview_content) {
+        return; // Use defaults
+    }
+
+    // Now parse the framework fields from the framework content
+    char* value;
+    
+    value = find_json_value(webview_content, "build_command");
+    if (value) {
+        strncpy(config->build_command, value, sizeof(config->build_command) - 1);
+        config->build_command[sizeof(config->build_command) - 1] = '\0';
+        free(value);
+    }
+    
+    value = find_json_value(webview_content, "dev_command");
+    if (value) {
+        strncpy(config->dev_command, value, sizeof(config->dev_command) - 1);
+        config->dev_command[sizeof(config->dev_command) - 1] = '\0';
+        free(value);
+    }
+    
+    value = find_json_value(webview_content, "dev_url");
+    if (value) {
+        strncpy(config->dev_url, value, sizeof(config->dev_url) - 1);
+        config->dev_url[sizeof(config->dev_url) - 1] = '\0';
+        free(value);
+    }
+    
+    value = find_json_value(webview_content, "build_dir");
+    if (value) {
+        strncpy(config->build_dir, value, sizeof(config->build_dir) - 1);
+        config->build_dir[sizeof(config->build_dir) - 1] = '\0';
+        free(value);
+    }
+    
+    value = find_json_value(webview_content, "dev_mode");
+    if (value) {
+        config->dev_mode = (strcmp(value, "true") == 0);
+        free(value);
+    }
+    
+    free(webview_content);
+}
+
 app_configuration_t* load_config(const char* config_file) {
     char* json_content = read_file(config_file);
     if (!json_content) {
@@ -341,12 +400,11 @@ app_configuration_t* load_config(const char* config_file) {
     
     // Parse WebView configuration
     config->webview.enabled = parse_nested_bool(json_content, "webview", "enabled", false);
-    parse_nested_string(json_content, "webview", "url", config->webview.url, sizeof(config->webview.url));
-    parse_nested_string(json_content, "webview", "user_agent", config->webview.user_agent, sizeof(config->webview.user_agent));
     config->webview.developer_extras = parse_nested_bool(json_content, "webview", "developer_extras", false);
     config->webview.javascript_enabled = parse_nested_bool(json_content, "webview", "javascript_enabled", true);
-    config->webview.allow_file_access = parse_nested_bool(json_content, "webview", "allow_file_access", false);
-    config->webview.allow_universal_access = parse_nested_bool(json_content, "webview", "allow_universal_access", false);
+    
+    // Parse webview framework config
+    parse_webview_framework_config(json_content, &config->webview.framework);
     
     free(json_content);
     return config;
@@ -373,6 +431,18 @@ void print_config(const app_configuration_t* config) {
     #endif
     
     printf("Debug Mode: %s\n", config->development.debug_mode ? "On" : "Off");
+    
+    // Debug webview framework configuration
+    if (config->webview.enabled) {
+        printf("\n=== WebView Framework Configuration ===\n");
+        printf("Build Command: '%s'\n", config->webview.framework.build_command);
+        printf("Dev Command: '%s'\n", config->webview.framework.dev_command);
+        printf("Dev URL: %s\n", config->webview.framework.dev_url);
+        printf("Build Directory: %s\n", config->webview.framework.build_dir);
+        printf("Dev Mode: %s\n", config->webview.framework.dev_mode ? "Yes" : "No");
+        printf("==========================================\n");
+    }
+    
     printf("=================================\n\n");
 }
 

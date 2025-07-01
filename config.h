@@ -78,15 +78,21 @@ typedef struct {
     bool console_logging;
 } development_config_t;
 
+// Framework configuration
+typedef struct {
+    char build_command[256];          // Build command
+    char dev_command[256];            // Development server command
+    char dev_url[256];                // Development server URL
+    char build_dir[64];               // Build output directory
+    bool dev_mode;                    // Development mode flag
+} webview_framework_config_t;
+
 // WebView configuration
 typedef struct {
     bool enabled;
-    char url[512];
-    char user_agent[256];
     bool developer_extras;
     bool javascript_enabled;
-    bool allow_file_access;
-    bool allow_universal_access;
+    webview_framework_config_t framework;  // Framework-specific configuration
 } webview_config_t;
 
 typedef struct {

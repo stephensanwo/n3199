@@ -1,29 +1,23 @@
 # Makefile for C Desktop App
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99
-PLATFORM_FLAGS =
+PLATFORM_FLAGS = -DPLATFORM_MACOS -framework Cocoa -framework Foundation -framework WebKit
 
+SRCS = main.c config.c webview_framework.c
 ifeq ($(shell uname),Darwin)
-    PLATFORM_FLAGS += -DPLATFORM_MACOS
-    PLATFORM_FLAGS += -framework Cocoa -framework Foundation -framework WebKit
-    PLATFORM_NAME = macos
-    PLATFORM_SRC = platform_macos.c
-    PLATFORM_OBJ = platform_macos.o
-else
-    $(error Unsupported platform)
+    SRCS += platform_macos.c
 endif
 
-SRC = main.c config.c $(PLATFORM_SRC)
-OBJ = $(SRC:.c=.o)
+OBJS = $(SRCS:.c=.o)
 TARGET = desktop_app
 
 # Default target
 all: $(TARGET)
 
 # Build the application
-$(TARGET): $(OBJ)
+$(TARGET): $(OBJS)
 	@echo "Linking $(TARGET)..."
-	$(CC) $(CFLAGS) $(PLATFORM_FLAGS) -o $(TARGET) $(OBJ)
+	$(CC) $(CFLAGS) $(PLATFORM_FLAGS) -o $(TARGET) $(OBJS)
 	@echo "Build complete! Run with: ./$(TARGET)"
 
 # Compile source files to object files
@@ -39,7 +33,7 @@ run: $(TARGET)
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f $(TARGET) $(OBJ)
+	rm -f $(TARGET) $(OBJS)
 	@echo "Clean complete!"
 
 # Debug build with extra information
@@ -55,17 +49,17 @@ help:
 	@echo "  clean  - Remove build artifacts"
 	@echo "  help   - Show this help message"
 	@echo ""
-	@echo "Source files: $(SRC)"
+	@echo "Source files: $(SRCS)"
 	@echo "Platform: $(shell uname)"
 
 # Show project info
 info:
 	@echo "=== Project Information ==="
 	@echo "Target: $(TARGET)"
-	@echo "Sources: $(SRC)"
+	@echo "Sources: $(SRCS)"
 	@echo "Platform: $(shell uname)"
 	@echo "Compiler: $(CC)"
 	@echo "Flags: $(CFLAGS) $(PLATFORM_FLAGS)"
-	@echo "Platform: $(PLATFORM_NAME)"
+	@echo "Platform: $(shell uname)"
 
 .PHONY: all run clean debug help info 

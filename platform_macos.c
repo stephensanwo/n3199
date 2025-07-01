@@ -7,149 +7,173 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "platform.h"
 #include "config.h"
+#include "webview_framework.h"
 
-// Forward declarations
-void menu_action_callback(id self, SEL _cmd, id sender);
-void webview_navigation_callback(id self, SEL _cmd, id notification);
-void webview_load_finished_callback(id self, SEL _cmd, id notification);
+// Objective-C runtime
+#include <objc/runtime.h>
+#include <objc/message.h>
 
-// macOS-specific window structure
-struct platform_window {
-    id ns_window;
+// macOS frameworks
+#include <CoreGraphics/CoreGraphics.h>
+
+// Global application state
+static id g_app = nil;
+static const app_configuration_t* stored_config = NULL;
+
+// Type definitions for Objective-C types
+typedef long NSInteger;
+typedef unsigned long NSUInteger;
+
+// Platform-specific window structure
+typedef struct {
     id ns_app;
+    id ns_window;
     id ns_toolbar;
     id window_delegate;
     id webview;
     id webview_config;
     id script_handler;
-};
+} platform_native_window_t;
 
-// Global variables
-static id g_app = NULL;
-
-int platform_init(void) {
-    if (g_app != NULL) return 0; // Already initialized - success
+bool platform_init(const app_configuration_t* app_config) {
+    if (!app_config) return false;
     
+    // Store config for later use
+    stored_config = app_config;
+    
+    // Initialize NSApplication
     Class NSApplication = objc_getClass("NSApplication");
-    
-    // Create shared application
-    id app = ((id (*)(id, SEL))objc_msgSend)((id)NSApplication, sel_registerName("sharedApplication"));
-    
-    if (!app) {
-        printf("Failed to initialize macOS platform\n");
-        return -1; // Error
+    if (!NSApplication) {
+        printf("Failed to get NSApplication class\n");
+        return false;
     }
     
-    // Register menu action method
-    Class appClass = object_getClass(app);
-    class_addMethod(appClass, sel_registerName("menuAction:"), (IMP)menu_action_callback, "v@:@");
+    g_app = ((id (*)(id, SEL))objc_msgSend)((id)NSApplication, sel_registerName("sharedApplication"));
+    if (!g_app) {
+        printf("Failed to create NSApplication instance\n");
+        return false;
+    }
     
-    g_app = app;
-    
-    // Set activation policy to regular app
-    ((void (*)(id, SEL, long))objc_msgSend)(g_app, sel_registerName("setActivationPolicy:"), 0);
+    // Set activation policy to regular app (shows in dock)
+    ((void (*)(id, SEL, long))objc_msgSend)(g_app, sel_registerName("setActivationPolicy:"), 0); // NSApplicationActivationPolicyRegular
     
     printf("macOS platform initialized\n");
-    return 0; // Success
+    
+    // If webview is enabled, initialize the framework
+    if (app_config->webview.enabled) {
+        printf("\nInitializing webview framework...\n");
+        
+        // Check if webview directory exists
+        if (access("webview", F_OK) != 0) {
+            printf("Error: webview directory not found. Please create your project in the 'webview' directory.\n");
+            return false;
+        }
+        
+        // Build the project first
+        printf("Building project...\n");
+        if (!run_build_command(&app_config->webview.framework)) {
+            printf("Build failed\n");
+            return false;
+        }
+        
+        // Start development server if in dev mode
+        if (app_config->webview.framework.dev_mode) {
+            if (!start_dev_server(&app_config->webview.framework)) {
+                printf("Failed to start development server\n");
+                return false;
+            }
+        }
+        
+        printf("Webview framework initialized successfully\n");
+    }
+    
+    return true;
 }
 
 void platform_cleanup(void) {
-    g_app = NULL;
+    // Stop dev server if running
+    stop_dev_server();
+    
+    // Cleanup platform resources
+    g_app = nil;
     printf("macOS platform cleaned up\n");
 }
 
-app_window_t* platform_create_window(const app_configuration_t* config) {
-    if (!config) return NULL;
+bool platform_create_window(app_window_t* window) {
+    if (!window) return false;
     
-    // Ensure platform is initialized (returns 0 on success, -1 on error)
-    if (platform_init() < 0) return NULL;  // Only fail on error (-1)
-    
-    app_window_t* window = malloc(sizeof(app_window_t));
-    platform_window_t* native = malloc(sizeof(platform_window_t));
-    
-    if (!window || !native) {
-        free(window);
-        free(native);
-        return NULL;
+    // Create native window structure
+    platform_native_window_t* native = malloc(sizeof(platform_native_window_t));
+    if (!native) {
+        printf("Failed to allocate native window structure\n");
+        return false;
     }
     
-    window->native_window = (void*)native;
-    window->config = config;
-    window->is_visible = false;
-    window->is_focused = false;
-    
+    // Initialize native window structure
+    memset(native, 0, sizeof(platform_native_window_t));
     native->ns_app = g_app;
-    native->ns_toolbar = NULL;
-    native->window_delegate = NULL;
-    native->webview = NULL;
-    native->webview_config = NULL;
-    native->script_handler = NULL;
     
-    // Create window frame
-    CGRect frame = CGRectMake(100, 100, config->window.width, config->window.height);
+    // Store native window in app_window structure
+    window->native_window = native;
     
-    // Get window style mask from configuration
-    unsigned long style_mask = get_window_style_mask(config);
+    // Create window style mask based on configuration
+    unsigned long style_mask = get_window_style_mask(window->config);
+    printf("Creating window with style mask: 0x%lx\n", style_mask);
     
-    if (config->development.debug_mode) {
-        printf("Creating window with style mask: 0x%lx\n", style_mask);
-        printf("Window size: %dx%d\n", config->window.width, config->window.height);
+    // Create window rect
+    CGRect frame = CGRectMake(0, 0, 
+                             window->config->window.width,
+                             window->config->window.height);
+    printf("Window size: %dx%d\n", window->config->window.width, window->config->window.height);
+    
+    // Get NSWindow class
+    Class NSWindow = objc_getClass("NSWindow");
+    if (!NSWindow) {
+        printf("Failed to get NSWindow class\n");
+        free(native);
+        return false;
     }
     
-    // Create NSWindow
-    Class NSWindow = objc_getClass("NSWindow");
-    Class NSString = objc_getClass("NSString");
-    
+    // Create window
     id ns_window = ((id (*)(id, SEL))objc_msgSend)((id)NSWindow, sel_registerName("alloc"));
-    
-    ns_window = ((id (*)(id, SEL, CGRect, unsigned long, unsigned long, int))objc_msgSend)(
+    ns_window = ((id (*)(id, SEL, CGRect, unsigned long, unsigned long, BOOL))objc_msgSend)(
         ns_window,
         sel_registerName("initWithContentRect:styleMask:backing:defer:"),
-        frame,
-        style_mask,
-        2, // NSBackingStoreBuffered
-        0  // defer = NO
+        frame, style_mask, 2, NO  // 2 = NSBackingStoreBuffered
     );
     
-    native->ns_window = ns_window;
+    if (!ns_window) {
+        printf("Failed to create NSWindow\n");
+        free(native);
+        return false;
+    }
+    
+    // Set window properties
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(ns_window, sel_registerName("setReleasedWhenClosed:"), NO);
     
     // Set window title
     id title = ((id (*)(id, SEL, const char*))objc_msgSend)(
-        (id)NSString,
+        (id)objc_getClass("NSString"),
         sel_registerName("stringWithUTF8String:"),
-        config->window.title
+        window->config->window.title
     );
     ((void (*)(id, SEL, id))objc_msgSend)(ns_window, sel_registerName("setTitle:"), title);
     
-    // Set minimum size if specified
-    if (config->window.min_width > 0 && config->window.min_height > 0) {
-        CGSize minSize = {config->window.min_width, config->window.min_height};
-        ((void (*)(id, SEL, CGSize))objc_msgSend)(ns_window, sel_registerName("setMinSize:"), minSize);
-    }
+    // Store window in native structure
+    native->ns_window = ns_window;
     
-    // Setup toolbar if enabled
-    if (config->macos.toolbar.enabled) {
-        platform_macos_setup_toolbar(window);
-    }
-    
-    // Setup WebView if enabled
-    if (config->webview.enabled) {
-        platform_setup_webview(window);
-    }
-    
-    if (config->development.debug_mode) {
-        printf("macOS window created successfully\n");
-    }
-    
-    return window;
+    printf("macOS window created successfully\n");
+    return true;
 }
 
 void platform_macos_setup_toolbar(app_window_t* window) {
     if (!window || !window->native_window) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     Class NSToolbar = objc_getClass("NSToolbar");
     Class NSString = objc_getClass("NSString");
     
@@ -177,7 +201,7 @@ void platform_macos_setup_toolbar(app_window_t* window) {
 void platform_macos_add_toolbar_item(app_window_t* window, const char* identifier, const char* title) {
     if (!window || !window->native_window) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     if (!native->ns_toolbar) return;
     
     // This is a simplified version - in a full implementation, you'd need to
@@ -190,43 +214,28 @@ void platform_macos_add_toolbar_item(app_window_t* window, const char* identifie
 void platform_show_window(app_window_t* window) {
     if (!window || !window->native_window) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
-    
-    // Center window if requested
-    if (window->config->window.center) {
-        ((void (*)(id, SEL))objc_msgSend)(native->ns_window, sel_registerName("center"));
-    }
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     
     // Show window
-    ((void (*)(id, SEL, id))objc_msgSend)(
-        native->ns_window,
-        sel_registerName("makeKeyAndOrderFront:"),
-        native->ns_window
-    );
+    ((void (*)(id, SEL, id))objc_msgSend)(native->ns_window, sel_registerName("makeKeyAndOrderFront:"), nil);
     
-    // Activate app
-    ((void (*)(id, SEL, int))objc_msgSend)(native->ns_app, sel_registerName("activateIgnoringOtherApps:"), 1);
+    // Activate the application
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(g_app, sel_registerName("activateIgnoringOtherApps:"), YES);
     
-    window->is_visible = true;
-    window->is_focused = true;
-    
-    if (window->config->development.debug_mode) {
-        printf("Window shown and activated\n");
-    }
+    printf("Window shown and activated\n");
 }
 
 void platform_hide_window(app_window_t* window) {
     if (!window || !window->native_window) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     ((void (*)(id, SEL, id))objc_msgSend)(native->ns_window, sel_registerName("orderOut:"), native->ns_window);
-    window->is_visible = false;
 }
 
 void platform_set_window_title(app_window_t* window, const char* title) {
     if (!window || !window->native_window || !title) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     Class NSString = objc_getClass("NSString");
     id ns_title = ((id (*)(id, SEL, const char*))objc_msgSend)(
         (id)NSString,
@@ -244,7 +253,7 @@ void platform_set_window_title(app_window_t* window, const char* title) {
 void platform_set_window_size(app_window_t* window, int width, int height) {
     if (!window || !window->native_window) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     
     CGRect frame = CGRectMake(0, 0, width, height);
     ((void (*)(id, SEL, CGRect, int))objc_msgSend)(
@@ -258,14 +267,14 @@ void platform_set_window_size(app_window_t* window, int width, int height) {
 void platform_center_window(app_window_t* window) {
     if (!window || !window->native_window) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     ((void (*)(id, SEL))objc_msgSend)(native->ns_window, sel_registerName("center"));
 }
 
 void platform_run_app(app_window_t* window) {
     if (!window || !window->native_window) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     
     if (window->config->development.debug_mode) {
         printf("Starting macOS application event loop...\n");
@@ -286,7 +295,7 @@ void platform_destroy_window(app_window_t* window) {
     if (!window) return;
     
     if (window->native_window) {
-        platform_window_t* native = (platform_window_t*)window->native_window;
+        platform_native_window_t* native = (platform_native_window_t*)window->native_window;
         
         // Close and release native window
         if (native->ns_window) {
@@ -483,13 +492,15 @@ void platform_setup_menubar(app_window_t* window) {
     
     const menubar_config_t* menubar = &window->config->menubar;
     
-    Class NSApplication = objc_getClass("NSApplication");
     Class NSMenu = objc_getClass("NSMenu");
     Class NSMenuItem = objc_getClass("NSMenuItem");
     Class NSString = objc_getClass("NSString");
     
-    // Get shared application
-    id app = ((id (*)(id, SEL))objc_msgSend)((id)NSApplication, sel_registerName("sharedApplication"));
+    // Use global g_app instead of creating a local one
+    if (!g_app) {
+        printf("Error: NSApplication not initialized\n");
+        return;
+    }
     
     // Create main menu
     id mainMenu = ((id (*)(id, SEL))objc_msgSend)(
@@ -590,8 +601,8 @@ void platform_setup_menubar(app_window_t* window) {
         }
     }
     
-    // Set the main menu
-    ((void (*)(id, SEL, id))objc_msgSend)(app, sel_registerName("setMainMenu:"), mainMenu);
+    // Set the main menu using global g_app
+    ((void (*)(id, SEL, id))objc_msgSend)(g_app, sel_registerName("setMainMenu:"), mainMenu);
     
     if (window->config->development.debug_mode) {
         printf("macOS menubar configured with %d menus\n", 
@@ -604,15 +615,12 @@ void platform_setup_menubar(app_window_t* window) {
 void platform_setup_webview(app_window_t* window) {
     if (!window || !window->native_window || !window->config->webview.enabled) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     
     // Get required classes
     Class WKWebView = objc_getClass("WKWebView");
     Class WKWebViewConfiguration = objc_getClass("WKWebViewConfiguration");
     Class WKPreferences = objc_getClass("WKPreferences");
-    Class NSString = objc_getClass("NSString");
-    Class NSURL = objc_getClass("NSURL");
-    Class NSNumber = objc_getClass("NSNumber");
     
     if (!WKWebView || !WKWebViewConfiguration) {
         printf("Error: WebKit framework not available\n");
@@ -633,46 +641,30 @@ void platform_setup_webview(app_window_t* window) {
     
     // Enable JavaScript
     if (window->config->webview.javascript_enabled) {
-        id jsKey = ((id (*)(id, SEL, const char*))objc_msgSend)(
-            (id)NSString,
-            sel_registerName("stringWithUTF8String:"),
-            "javaScriptEnabled"
-        );
-        id jsValue = ((id (*)(id, SEL, BOOL))objc_msgSend)(
-            (id)NSNumber,
-            sel_registerName("numberWithBool:"),
-            YES
-        );
-        ((void (*)(id, SEL, id, id))objc_msgSend)(
-            preferences,
-            sel_registerName("setValue:forKey:"),
-            jsValue,
-            jsKey
-        );
-    }
-    
-    // Enable developer extras if requested
-    if (window->config->webview.developer_extras) {
-        id devKey = ((id (*)(id, SEL, const char*))objc_msgSend)(
-            (id)NSString,
-            sel_registerName("stringWithUTF8String:"),
-            "developerExtrasEnabled"
-        );
-        id devValue = ((id (*)(id, SEL, BOOL))objc_msgSend)(
-            (id)NSNumber,
-            sel_registerName("numberWithBool:"),
-            YES
-        );
-        ((void (*)(id, SEL, id, id))objc_msgSend)(
-            preferences,
-            sel_registerName("setValue:forKey:"),
-            devValue,
-            devKey
-        );
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(preferences, sel_registerName("setJavaScriptEnabled:"), YES);
     }
     
     // Set preferences on configuration
     ((void (*)(id, SEL, id))objc_msgSend)(config, sel_registerName("setPreferences:"), preferences);
+    
+    // Enable developer extras on the configuration (newer method)
+    if (window->config->webview.developer_extras) {
+        // Check if the method exists before calling it
+        SEL developerExtrasSelector = sel_registerName("_setDeveloperExtrasEnabled:");
+        if (((BOOL (*)(id, SEL, SEL))objc_msgSend)(config, sel_registerName("respondsToSelector:"), developerExtrasSelector)) {
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(config, sel_registerName("_setDeveloperExtrasEnabled:"), YES);
+        } else {
+            // Fallback: try the old preferences method with safety check
+            SEL prefsDevExtrasSelector = sel_registerName("setDeveloperExtrasEnabled:");
+            if (((BOOL (*)(id, SEL, SEL))objc_msgSend)(preferences, sel_registerName("respondsToSelector:"), prefsDevExtrasSelector)) {
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(preferences, sel_registerName("setDeveloperExtrasEnabled:"), YES);
+            } else {
+                if (window->config->development.debug_mode) {
+                    printf("Developer extras not available on this WebKit version\n");
+                }
+            }
+        }
+    }
     
     // Create WebView frame (same as window content view)
     CGRect frame = ((CGRect (*)(id, SEL))objc_msgSend)(native->ns_window, sel_registerName("frame"));
@@ -697,9 +689,10 @@ void platform_setup_webview(app_window_t* window) {
     native->webview = webview;
     native->webview_config = config;
     
-    // Load initial URL if specified
-    if (strlen(window->config->webview.url) > 0) {
-        platform_webview_load_url(window, window->config->webview.url);
+    // Load initial URL if available
+    const char* url = get_webview_url(&window->config->webview.framework);
+    if (url && strlen(url) > 0) {
+        platform_webview_load_url(window, url);
     }
     
     if (window->config->development.debug_mode) {
@@ -710,35 +703,35 @@ void platform_setup_webview(app_window_t* window) {
 void platform_webview_load_url(app_window_t* window, const char* url) {
     if (!window || !window->native_window || !url) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     if (!native->webview) return;
     
+    // Get required classes
     Class NSString = objc_getClass("NSString");
     Class NSURL = objc_getClass("NSURL");
     
-    // Create URL string
+    // Create NSString from URL
     id urlString = ((id (*)(id, SEL, const char*))objc_msgSend)(
         (id)NSString,
         sel_registerName("stringWithUTF8String:"),
         url
     );
     
-    // Create NSURL
+    // Create NSURL from string
     id nsurl = ((id (*)(id, SEL, id))objc_msgSend)(
-        (id)NSURL,
-        sel_registerName("URLWithString:"),
+        ((id (*)(id, SEL))objc_msgSend)((id)NSURL, sel_registerName("alloc")),
+        sel_registerName("initWithString:"),
         urlString
     );
     
     // Create NSURLRequest
-    Class NSURLRequest = objc_getClass("NSURLRequest");
     id request = ((id (*)(id, SEL, id))objc_msgSend)(
-        (id)NSURLRequest,
-        sel_registerName("requestWithURL:"),
+        ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSURLRequest"), sel_registerName("alloc")),
+        sel_registerName("initWithURL:"),
         nsurl
     );
     
-    // Load request
+    // Load request in WebView
     ((void (*)(id, SEL, id))objc_msgSend)(
         native->webview,
         sel_registerName("loadRequest:"),
@@ -753,7 +746,7 @@ void platform_webview_load_url(app_window_t* window, const char* url) {
 void platform_webview_load_html(app_window_t* window, const char* html) {
     if (!window || !window->native_window || !html) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     if (!native->webview) return;
     
     Class NSString = objc_getClass("NSString");
@@ -767,12 +760,13 @@ void platform_webview_load_html(app_window_t* window, const char* html) {
     
     // Create base URL for relative paths
     id baseURL = NULL;
-    if (strlen(window->config->webview.url) > 0) {
+    const char* url = get_webview_url(&window->config->webview.framework);
+    if (url && strlen(url) > 0) {
         Class NSURL = objc_getClass("NSURL");
         id urlString = ((id (*)(id, SEL, const char*))objc_msgSend)(
             (id)NSString,
             sel_registerName("stringWithUTF8String:"),
-            window->config->webview.url
+            url
         );
         baseURL = ((id (*)(id, SEL, id))objc_msgSend)(
             (id)NSURL,
@@ -797,7 +791,7 @@ void platform_webview_load_html(app_window_t* window, const char* html) {
 void platform_webview_evaluate_javascript(app_window_t* window, const char* script) {
     if (!window || !window->native_window || !script) return;
     
-    platform_window_t* native = (platform_window_t*)window->native_window;
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     if (!native->webview) return;
     
     Class NSString = objc_getClass("NSString");
@@ -820,6 +814,40 @@ void platform_webview_evaluate_javascript(app_window_t* window, const char* scri
     if (window->config->development.debug_mode) {
         printf("Evaluating JavaScript: %s\n", script);
     }
+}
+
+void platform_webview_navigate(app_window_t* window) {
+    if (!window || !window->native_window) return;
+    
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+    if (!native->webview) return;
+    
+    // Get the URL from the framework configuration
+    const char* url = get_webview_url(&window->config->webview.framework);
+    if (url && strlen(url) > 0) {
+        platform_webview_load_url(window, url);
+        
+        if (window->config->development.debug_mode) {
+            printf("Navigating to URL: %s\n", url);
+        }
+    }
+}
+
+void platform_close_window(app_window_t* window) {
+    if (!window || !window->native_window) return;
+    
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+    
+    // Hide window
+    ((void (*)(id, SEL, id))objc_msgSend)(native->ns_window, sel_registerName("orderOut:"), native->ns_window);
+    
+    // Close window
+    ((void (*)(id, SEL))objc_msgSend)(native->ns_window, sel_registerName("close"));
+}
+
+void platform_run_event_loop(void) {
+    // Run the event loop
+    ((void (*)(id, SEL))objc_msgSend)(g_app, sel_registerName("run"));
 }
 
 #endif // __APPLE__ 
