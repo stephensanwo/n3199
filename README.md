@@ -1,37 +1,13 @@
-# C Desktop Application Framework
+# Cross platform desktop apps in C + Webview 
 
-A cross-platform desktop application framework written in C with native window management and configuration-driven customization. Currently supports macOS with plans for Windows and Linux.
-
-## Features
-
-- ✅ **Platform-Aware Architecture** - Modular design supporting multiple platforms
-- ✅ **JSON Configuration** - Flexible, user-friendly configuration system
-- ✅ **Native Window Management** - Platform-specific window creation and styling
-- ✅ **macOS Native Features** - Toolbar support, transparency, frameless windows
-- ✅ **Debug Mode** - Comprehensive logging and development features
-- 🔄 **Extensible Design** - Easy to add new platforms and features
-
-## Project Structure
-
-```
-.
-├── main.c                    # Main application entry point
-├── config.h / config.c       # Configuration parsing system
-├── platform.h               # Platform abstraction layer
-├── platform_macos.c         # macOS-specific implementation
-├── config.json              # Default application configuration
-├── config_transparent.json  # Example: Transparent window config
-├── config_frameless.json    # Example: Frameless window config
-├── Makefile                  # Build system
-├── run.sh                    # Build and run script
-└── README.md                 # This file
-```
+Multi framework support, react, vue, svelte
 
 ## Prerequisites
 
 - macOS with Xcode command line tools installed
 - GCC/Clang compiler (comes with Xcode tools)
 - Make utility
+- Node.js and pnpm (for WebView development)
 
 ## Building and Running
 
@@ -60,9 +36,84 @@ make info
 
 ### Option 3: Manual compilation
 ```bash
-gcc -Wall -Wextra -std=c99 -DPLATFORM_MACOS -framework Cocoa -framework Foundation -o desktop_app main.c config.c platform_macos.c
+gcc -Wall -Wextra -std=c99 -DPLATFORM_MACOS -framework Cocoa -framework Foundation -framework WebKit -o desktop_app main.c config.c platform_macos.c webview_framework.c
 ./desktop_app
 ```
+
+## WebView Integration
+
+### React + TypeScript + Vite Setup
+The `webview/` directory contains a complete React application with:
+- **React 19** with TypeScript support
+- **Vite** for fast development and building
+- **ESLint** for code quality
+- **Hot Module Replacement** for instant updates
+
+### WebView Configuration
+```json
+{
+  "webview": {
+    "enabled": true,
+    "developer_extras": true,
+    "javascript_enabled": true,
+    "framework": {
+      "build_command": "pnpm run build",
+      "dev_command": "pnpm run dev",
+      "dev_url": "http://localhost:5174",
+      "build_dir": "dist",
+      "dev_mode": true
+    }
+  }
+}
+```
+
+### Development Workflow
+1. **Development Mode**: Automatically starts Vite dev server and loads React app
+2. **Production Mode**: Builds the React app and serves static files
+3. **Hot Reload**: Changes in React code are instantly reflected in the desktop app
+4. **Developer Tools**: WebKit inspector available for debugging
+
+## Menu System
+
+The framework includes a comprehensive native menu system with full customization:
+
+### Menu Configuration
+```json
+{
+  "menubar": {
+    "enabled": true,
+    "show_about_item": true,
+    "show_preferences_item": true,
+    "show_services_menu": false,
+    "file_menu": {
+      "enabled": true,
+      "title": "File",
+      "items": [
+        {
+          "title": "New",
+          "shortcut": "cmd+n",
+          "action": "new",
+          "enabled": true,
+          "separator_after": false
+        }
+      ]
+    }
+  }
+}
+```
+
+### Supported Menus
+- **File Menu** - New, Open, Save, Close operations
+- **Edit Menu** - Undo, Redo, Cut, Copy, Paste
+- **View Menu** - Zoom controls
+- **Window Menu** - Minimize, Zoom window
+- **Help Menu** - Documentation and support
+
+### Menu Features
+- Native keyboard shortcuts (cmd+n, cmd+s, etc.)
+- Enable/disable individual items
+- Separator lines between groups
+- Custom actions and handlers
 
 ## Configuration System
 
@@ -74,10 +125,7 @@ The application uses JSON configuration files to customize window behavior and p
 ./desktop_app
 
 # Run with custom config
-./desktop_app config_transparent.json
-
-# Run with frameless window
-./desktop_app config_frameless.json
+./desktop_app my_config.json
 ```
 
 ### Configuration Options
@@ -108,9 +156,7 @@ The application uses JSON configuration files to customize window behavior and p
     "maximizable": true,
     "closable": true,
     "frameless": false,
-    "transparent": false,
-    "always_on_top": false,
-    "start_hidden": false
+    "transparent": false
   }
 }
 ```
@@ -118,25 +164,9 @@ The application uses JSON configuration files to customize window behavior and p
 #### macOS-Specific Features
 ```json
 {
-  "platform": {
-    "macos": {
-      "toolbar": {
-        "enabled": true,
-        "transparent": false,
-        "unified": true,
-        "full_size_content_view": false,
-        "hide_title": false,
-        "appearance": "auto"
-      },
-      "window_style": {
-        "vibrant_background": false,
-        "blur_effect": "none",
-        "material": "window"
-      },
-      "title_bar": {
-        "traffic_lights_position": "default",
-        "custom_traffic_lights": false
-      }
+  "macos": {
+    "toolbar": {
+      "enabled": false
     }
   }
 }
@@ -147,92 +177,52 @@ The application uses JSON configuration files to customize window behavior and p
 {
   "development": {
     "debug_mode": true,
-    "hot_reload": true,
     "console_logging": true
   }
 }
 ```
 
-## Platform Support
 
-### Current: macOS ✅
-- Native NSWindow and NSToolbar integration
-- Transparency and blur effects
-- Frameless windows
-- Custom window styling
-- Native appearance support
+### WebView Development
+1. Navigate to the `webview/` directory
+2. Install dependencies: `pnpm install`
+3. Start development: `pnpm run dev` (or let the C app handle it)
+4. Build for production: `pnpm run build`
 
-### Planned: Windows 🔄
-- Win32 API integration
-- Custom frame rendering
-- Windows 10/11 styling
-
-### Planned: Linux 🔄
-- GTK integration
-- Window manager compatibility
-- Cross-desktop support
+### Adding Menu Actions
+Menu actions are handled in the platform-specific code. To add new actions:
+1. Add the action to your menu configuration
+2. Implement the handler in `platform_macos.c` (or platform-specific file)
+3. Update the action dispatcher
 
 ## Examples
 
-### Transparent Window
+### Basic Desktop App
 ```bash
-./desktop_app config_transparent.json
+./desktop_app
 ```
-Creates a window with transparent background and native toolbar.
+Creates a standard desktop application with native menus.
 
-### Frameless Window
-```bash
-./desktop_app config_frameless.json
-```
-Creates a borderless window without title bar controls.
+### WebView App with React
+Enable WebView in your config and the app will automatically:
+1. Build your React application
+2. Start the development server
+3. Load the React app in a native WebView
+4. Provide hot reload during development
 
-### Custom Configuration
-Create your own config file based on the examples and run:
-```bash
-./desktop_app my_custom_config.json
-```
+### Custom Menu Configuration
+Create a custom menu structure by modifying the menu sections in your config file.
 
-## Development
+## API Reference
 
-### Debug Mode
-Enable debug mode in your configuration to see detailed logging:
-```json
-{
-  "development": {
-    "debug_mode": true,
-    "console_logging": true
-  }
-}
-```
+### WebView Functions
+- `platform_webview_load_url()` - Load a URL in the WebView
+- `platform_webview_load_html()` - Load HTML content directly
+- `platform_webview_evaluate_javascript()` - Execute JavaScript code
+- `platform_webview_navigate()` - Navigate to the configured URL
 
-### Adding Platform Support
-1. Create `platform_[os].c` with platform-specific implementations
-2. Update `Makefile` to include the new platform
-3. Add platform detection in `config.h`
-4. Implement the platform interface from `platform.h`
-
-## Next Steps
-
-This framework is designed to eventually support:
-- WebView integration for modern frontend frameworks (React, Vue, Svelte)
-- IPC bridge between C backend and frontend
-- Hot reload for development
-- Asset bundling and embedding
-- Cross-platform packaging
-
-## Troubleshooting
-
-### Build Issues
-1. Ensure Xcode command line tools: `xcode-select --install`
-2. Verify compiler: `gcc --version`
-3. Check platform: `uname -a`
-
-### Runtime Issues
-1. Enable debug mode in configuration
-2. Check console output for detailed logging
-3. Verify configuration file syntax with a JSON validator
-
-### Configuration Issues
-1. Use `make info` to see build configuration
-2. Test with provided example configurations
-3. Validate JSON syntax 
+### Framework Functions
+- `run_build_command()` - Build the web application
+- `start_dev_server()` - Start development server
+- `stop_dev_server()` - Stop development server
+- `get_webview_url()` - Get the current WebView URL
