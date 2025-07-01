@@ -12,6 +12,8 @@
 
 // Forward declarations
 void menu_action_callback(id self, SEL _cmd, id sender);
+void webview_navigation_callback(id self, SEL _cmd, id notification);
+void webview_load_finished_callback(id self, SEL _cmd, id notification);
 
 // macOS-specific window structure
 struct platform_window {
@@ -19,6 +21,9 @@ struct platform_window {
     id ns_app;
     id ns_toolbar;
     id window_delegate;
+    id webview;
+    id webview_config;
+    id script_handler;
 };
 
 // Global variables
@@ -78,6 +83,9 @@ app_window_t* platform_create_window(const app_configuration_t* config) {
     native->ns_app = g_app;
     native->ns_toolbar = NULL;
     native->window_delegate = NULL;
+    native->webview = NULL;
+    native->webview_config = NULL;
+    native->script_handler = NULL;
     
     // Create window frame
     CGRect frame = CGRectMake(100, 100, config->window.width, config->window.height);
@@ -124,6 +132,11 @@ app_window_t* platform_create_window(const app_configuration_t* config) {
     // Setup toolbar if enabled
     if (config->macos.toolbar.enabled) {
         platform_macos_setup_toolbar(window);
+    }
+    
+    // Setup WebView if enabled
+    if (config->webview.enabled) {
+        platform_setup_webview(window);
     }
     
     if (config->development.debug_mode) {
@@ -585,6 +598,227 @@ void platform_setup_menubar(app_window_t* window) {
                menubar->file_menu.enabled + menubar->edit_menu.enabled + 
                menubar->view_menu.enabled + menubar->window_menu.enabled + 
                menubar->help_menu.enabled);
+    }
+}
+
+void platform_setup_webview(app_window_t* window) {
+    if (!window || !window->native_window || !window->config->webview.enabled) return;
+    
+    platform_window_t* native = (platform_window_t*)window->native_window;
+    
+    // Get required classes
+    Class WKWebView = objc_getClass("WKWebView");
+    Class WKWebViewConfiguration = objc_getClass("WKWebViewConfiguration");
+    Class WKPreferences = objc_getClass("WKPreferences");
+    Class NSString = objc_getClass("NSString");
+    Class NSURL = objc_getClass("NSURL");
+    Class NSNumber = objc_getClass("NSNumber");
+    
+    if (!WKWebView || !WKWebViewConfiguration) {
+        printf("Error: WebKit framework not available\n");
+        return;
+    }
+    
+    // Create WKWebViewConfiguration
+    id config = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)WKWebViewConfiguration, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    // Create preferences
+    id preferences = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)WKPreferences, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    // Enable JavaScript
+    if (window->config->webview.javascript_enabled) {
+        id jsKey = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            "javaScriptEnabled"
+        );
+        id jsValue = ((id (*)(id, SEL, BOOL))objc_msgSend)(
+            (id)NSNumber,
+            sel_registerName("numberWithBool:"),
+            YES
+        );
+        ((void (*)(id, SEL, id, id))objc_msgSend)(
+            preferences,
+            sel_registerName("setValue:forKey:"),
+            jsValue,
+            jsKey
+        );
+    }
+    
+    // Enable developer extras if requested
+    if (window->config->webview.developer_extras) {
+        id devKey = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            "developerExtrasEnabled"
+        );
+        id devValue = ((id (*)(id, SEL, BOOL))objc_msgSend)(
+            (id)NSNumber,
+            sel_registerName("numberWithBool:"),
+            YES
+        );
+        ((void (*)(id, SEL, id, id))objc_msgSend)(
+            preferences,
+            sel_registerName("setValue:forKey:"),
+            devValue,
+            devKey
+        );
+    }
+    
+    // Set preferences on configuration
+    ((void (*)(id, SEL, id))objc_msgSend)(config, sel_registerName("setPreferences:"), preferences);
+    
+    // Create WebView frame (same as window content view)
+    CGRect frame = ((CGRect (*)(id, SEL))objc_msgSend)(native->ns_window, sel_registerName("frame"));
+    
+    // Create WKWebView
+    id webview = ((id (*)(id, SEL))objc_msgSend)((id)WKWebView, sel_registerName("alloc"));
+    webview = ((id (*)(id, SEL, CGRect, id))objc_msgSend)(
+        webview,
+        sel_registerName("initWithFrame:configuration:"),
+        frame,
+        config
+    );
+    
+    // Set as content view
+    ((void (*)(id, SEL, id))objc_msgSend)(
+        native->ns_window,
+        sel_registerName("setContentView:"),
+        webview
+    );
+    
+    // Store WebView in native window structure
+    native->webview = webview;
+    native->webview_config = config;
+    
+    // Load initial URL if specified
+    if (strlen(window->config->webview.url) > 0) {
+        platform_webview_load_url(window, window->config->webview.url);
+    }
+    
+    if (window->config->development.debug_mode) {
+        printf("WebView initialized successfully\n");
+    }
+}
+
+void platform_webview_load_url(app_window_t* window, const char* url) {
+    if (!window || !window->native_window || !url) return;
+    
+    platform_window_t* native = (platform_window_t*)window->native_window;
+    if (!native->webview) return;
+    
+    Class NSString = objc_getClass("NSString");
+    Class NSURL = objc_getClass("NSURL");
+    
+    // Create URL string
+    id urlString = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        url
+    );
+    
+    // Create NSURL
+    id nsurl = ((id (*)(id, SEL, id))objc_msgSend)(
+        (id)NSURL,
+        sel_registerName("URLWithString:"),
+        urlString
+    );
+    
+    // Create NSURLRequest
+    Class NSURLRequest = objc_getClass("NSURLRequest");
+    id request = ((id (*)(id, SEL, id))objc_msgSend)(
+        (id)NSURLRequest,
+        sel_registerName("requestWithURL:"),
+        nsurl
+    );
+    
+    // Load request
+    ((void (*)(id, SEL, id))objc_msgSend)(
+        native->webview,
+        sel_registerName("loadRequest:"),
+        request
+    );
+    
+    if (window->config->development.debug_mode) {
+        printf("Loading URL: %s\n", url);
+    }
+}
+
+void platform_webview_load_html(app_window_t* window, const char* html) {
+    if (!window || !window->native_window || !html) return;
+    
+    platform_window_t* native = (platform_window_t*)window->native_window;
+    if (!native->webview) return;
+    
+    Class NSString = objc_getClass("NSString");
+    
+    // Create HTML string
+    id htmlString = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        html
+    );
+    
+    // Create base URL for relative paths
+    id baseURL = NULL;
+    if (strlen(window->config->webview.url) > 0) {
+        Class NSURL = objc_getClass("NSURL");
+        id urlString = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            window->config->webview.url
+        );
+        baseURL = ((id (*)(id, SEL, id))objc_msgSend)(
+            (id)NSURL,
+            sel_registerName("URLWithString:"),
+            urlString
+        );
+    }
+    
+    // Load HTML
+    ((void (*)(id, SEL, id, id))objc_msgSend)(
+        native->webview,
+        sel_registerName("loadHTMLString:baseURL:"),
+        htmlString,
+        baseURL
+    );
+    
+    if (window->config->development.debug_mode) {
+        printf("Loading HTML content\n");
+    }
+}
+
+void platform_webview_evaluate_javascript(app_window_t* window, const char* script) {
+    if (!window || !window->native_window || !script) return;
+    
+    platform_window_t* native = (platform_window_t*)window->native_window;
+    if (!native->webview) return;
+    
+    Class NSString = objc_getClass("NSString");
+    
+    // Create script string
+    id scriptString = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        script
+    );
+    
+    // Evaluate JavaScript
+    ((void (*)(id, SEL, id, id))objc_msgSend)(
+        native->webview,
+        sel_registerName("evaluateJavaScript:completionHandler:"),
+        scriptString,
+        NULL
+    );
+    
+    if (window->config->development.debug_mode) {
+        printf("Evaluating JavaScript: %s\n", script);
     }
 }
 

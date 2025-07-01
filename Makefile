@@ -1,35 +1,35 @@
 # Makefile for C Desktop App
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99
-FRAMEWORKS = -framework Cocoa -framework Foundation
-TARGET = desktop_app
+PLATFORM_FLAGS =
 
-# Source files
-SOURCES = main.c config.c
-HEADERS = config.h platform.h
-
-# Platform-specific sources
 ifeq ($(shell uname),Darwin)
-    SOURCES += platform_macos.c
-    PLATFORM_CFLAGS = -DPLATFORM_MACOS
+    PLATFORM_FLAGS += -DPLATFORM_MACOS
+    PLATFORM_FLAGS += -framework Cocoa -framework Foundation -framework WebKit
+    PLATFORM_NAME = macos
+    PLATFORM_SRC = platform_macos.c
+    PLATFORM_OBJ = platform_macos.o
+else
+    $(error Unsupported platform)
 endif
 
-# Objects
-OBJECTS = $(SOURCES:.c=.o)
+SRC = main.c config.c $(PLATFORM_SRC)
+OBJ = $(SRC:.c=.o)
+TARGET = desktop_app
 
 # Default target
 all: $(TARGET)
 
 # Build the application
-$(TARGET): $(OBJECTS)
+$(TARGET): $(OBJ)
 	@echo "Linking $(TARGET)..."
-	$(CC) $(CFLAGS) $(PLATFORM_CFLAGS) $(FRAMEWORKS) -o $(TARGET) $(OBJECTS)
+	$(CC) $(CFLAGS) $(PLATFORM_FLAGS) -o $(TARGET) $(OBJ)
 	@echo "Build complete! Run with: ./$(TARGET)"
 
 # Compile source files to object files
-%.o: %.c $(HEADERS)
+%.o: %.c
 	@echo "Compiling $<..."
-	$(CC) $(CFLAGS) $(PLATFORM_CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(PLATFORM_FLAGS) -c $< -o $@
 
 # Run the application
 run: $(TARGET)
@@ -39,7 +39,7 @@ run: $(TARGET)
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f $(TARGET) $(OBJECTS)
+	rm -f $(TARGET) $(OBJ)
 	@echo "Clean complete!"
 
 # Debug build with extra information
@@ -55,18 +55,17 @@ help:
 	@echo "  clean  - Remove build artifacts"
 	@echo "  help   - Show this help message"
 	@echo ""
-	@echo "Source files: $(SOURCES)"
+	@echo "Source files: $(SRC)"
 	@echo "Platform: $(shell uname)"
 
 # Show project info
 info:
 	@echo "=== Project Information ==="
 	@echo "Target: $(TARGET)"
-	@echo "Sources: $(SOURCES)"
-	@echo "Headers: $(HEADERS)"
+	@echo "Sources: $(SRC)"
 	@echo "Platform: $(shell uname)"
 	@echo "Compiler: $(CC)"
-	@echo "Flags: $(CFLAGS) $(PLATFORM_CFLAGS)"
-	@echo "Frameworks: $(FRAMEWORKS)"
+	@echo "Flags: $(CFLAGS) $(PLATFORM_FLAGS)"
+	@echo "Platform: $(PLATFORM_NAME)"
 
 .PHONY: all run clean debug help info 

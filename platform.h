@@ -49,4 +49,10 @@ void platform_linux_setup_toolbar(app_window_t* window);
 void platform_setup_menubar(app_window_t* window);
 void platform_handle_menu_action(const char* action);
 
+// WebView functions
+void platform_setup_webview(app_window_t* window);
+void platform_webview_load_url(app_window_t* window, const char* url);
+void platform_webview_load_html(app_window_t* window, const char* html);
+void platform_webview_evaluate_javascript(app_window_t* window, const char* script);
+
 #endif // PLATFORM_H 

@@ -157,15 +157,22 @@
       ]
     }
   },
-  "platform": {
-    "macos": {
-      "toolbar": {
-        "enabled": false
-      }
+  "macos": {
+    "toolbar": {
+      "enabled": false
     }
   },
   "development": {
     "debug_mode": true,
     "console_logging": true
+  },
+  "webview": {
+    "enabled": true,
+    "url": "file:///Users/stephen.sanwo/Desktop/n3199/www/index.html",
+    "user_agent": "DesktopApp/1.0 WebKit",
+    "developer_extras": true,
+    "javascript_enabled": true,
+    "allow_file_access": true,
+    "allow_universal_access": false
   }
 }

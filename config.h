@@ -78,11 +78,27 @@ typedef struct {
     bool console_logging;
 } development_config_t;
 
+// WebView configuration
+typedef struct {
+    bool enabled;
+    char url[512];
+    char user_agent[256];
+    bool developer_extras;
+    bool javascript_enabled;
+    bool allow_file_access;
+    bool allow_universal_access;
+} webview_config_t;
+
 typedef struct {
     app_config_t app;
     window_config_t window;
     menubar_config_t menubar;
+    webview_config_t webview;
+    
+    #ifdef PLATFORM_MACOS
     macos_config_t macos;
+    #endif
+    
     development_config_t development;
 } app_configuration_t;
 

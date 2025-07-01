@@ -339,6 +339,15 @@ app_configuration_t* load_config(const char* config_file) {
     parse_menu_config(json_content, "window_menu", &config->menubar.window_menu);
     parse_menu_config(json_content, "help_menu", &config->menubar.help_menu);
     
+    // Parse WebView configuration
+    config->webview.enabled = parse_nested_bool(json_content, "webview", "enabled", false);
+    parse_nested_string(json_content, "webview", "url", config->webview.url, sizeof(config->webview.url));
+    parse_nested_string(json_content, "webview", "user_agent", config->webview.user_agent, sizeof(config->webview.user_agent));
+    config->webview.developer_extras = parse_nested_bool(json_content, "webview", "developer_extras", false);
+    config->webview.javascript_enabled = parse_nested_bool(json_content, "webview", "javascript_enabled", true);
+    config->webview.allow_file_access = parse_nested_bool(json_content, "webview", "allow_file_access", false);
+    config->webview.allow_universal_access = parse_nested_bool(json_content, "webview", "allow_universal_access", false);
+    
     free(json_content);
     return config;
 }
