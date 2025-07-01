@@ -8,14 +8,14 @@ typedef struct platform_window platform_window_t;
 
 // Platform-independent window management interface
 typedef struct {
-    platform_window_t* native_window;
-    app_configuration_t* config;
+    void* native_window;
+    const app_configuration_t* config;
     bool is_visible;
     bool is_focused;
 } app_window_t;
 
 // Window creation and management functions
-app_window_t* platform_create_window(app_configuration_t* config);
+app_window_t* platform_create_window(const app_configuration_t* config);
 void platform_show_window(app_window_t* window);
 void platform_hide_window(app_window_t* window);
 void platform_set_window_title(app_window_t* window, const char* title);
@@ -44,5 +44,9 @@ void platform_windows_setup_toolbar(app_window_t* window);
 #ifdef PLATFORM_LINUX
 void platform_linux_setup_toolbar(app_window_t* window);
 #endif
+
+// Function declarations
+void platform_setup_menubar(app_window_t* window);
+void platform_handle_menu_action(const char* action);
 
 #endif // PLATFORM_H 

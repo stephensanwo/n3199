@@ -1,0 +1,44 @@
+=== C Desktop Application Framework ===
+Platform: macos
+Version: 1.0.0
+
+Loading configuration from: config.json
+=== Application Configuration ===
+Platform: macos
+App Name: My Desktop App
+Window Title: Simple C Desktop App
+Window Size: 800x600
+Resizable: Yes
+macOS Toolbar: Disabled
+Debug Mode: On
+=================================
+
+macOS platform initialized
+Creating application window...
+Creating window with style mask: 0xf
+Window size: 800x600
+macOS window created successfully
+Showing window...
+Window shown and activated
+Creating menu: File with 4 items
+Creating menu: Edit with 5 items
+Creating menu: View with 3 items
+Creating menu: Window with 2 items
+Creating menu: Help with 1 items
+macOS menubar configured with 5 menus
+Menubar setup completed
+Application started successfully!
+Window configuration:
+  - Title: Simple C Desktop App
+  - Size: 800x600
+  - Resizable: Yes
+  - Toolbar: Disabled
+
+Starting application event loop...
+Close the window or press Ctrl+C to quit.
+
+Starting macOS application event loop...
+Press Cmd+Q or close the window to quit.
+
+Received signal 15, shutting down gracefully...
+macOS platform cleaned up

@@ -16,6 +16,147 @@
     "maximizable": true,
     "closable": true
   },
+  "menubar": {
+    "enabled": true,
+    "show_about_item": true,
+    "show_preferences_item": true,
+    "show_services_menu": false,
+    "file_menu": {
+      "enabled": true,
+      "title": "File",
+      "items": [
+        {
+          "title": "New",
+          "shortcut": "cmd+n",
+          "action": "new",
+          "enabled": true,
+          "separator_after": false
+        },
+        {
+          "title": "Open...",
+          "shortcut": "cmd+o",
+          "action": "open",
+          "enabled": true,
+          "separator_after": false
+        },
+        {
+          "title": "Save",
+          "shortcut": "cmd+s",
+          "action": "save",
+          "enabled": true,
+          "separator_after": true
+        },
+        {
+          "title": "Close Window",
+          "shortcut": "cmd+w",
+          "action": "close_window",
+          "enabled": true,
+          "separator_after": false
+        }
+      ]
+    },
+    "edit_menu": {
+      "enabled": true,
+      "title": "Edit",
+      "items": [
+        {
+          "title": "Undo",
+          "shortcut": "cmd+z",
+          "action": "undo",
+          "enabled": true,
+          "separator_after": false
+        },
+        {
+          "title": "Redo",
+          "shortcut": "shift+cmd+z",
+          "action": "redo",
+          "enabled": true,
+          "separator_after": true
+        },
+        {
+          "title": "Cut",
+          "shortcut": "cmd+x",
+          "action": "cut",
+          "enabled": true,
+          "separator_after": false
+        },
+        {
+          "title": "Copy",
+          "shortcut": "cmd+c",
+          "action": "copy",
+          "enabled": true,
+          "separator_after": false
+        },
+        {
+          "title": "Paste",
+          "shortcut": "cmd+v",
+          "action": "paste",
+          "enabled": true,
+          "separator_after": false
+        }
+      ]
+    },
+    "view_menu": {
+      "enabled": true,
+      "title": "View",
+      "items": [
+        {
+          "title": "Zoom In",
+          "shortcut": "cmd+plus",
+          "action": "zoom_in",
+          "enabled": true,
+          "separator_after": false
+        },
+        {
+          "title": "Zoom Out",
+          "shortcut": "cmd+minus",
+          "action": "zoom_out",
+          "enabled": true,
+          "separator_after": false
+        },
+        {
+          "title": "Actual Size",
+          "shortcut": "cmd+0",
+          "action": "zoom_reset",
+          "enabled": true,
+          "separator_after": false
+        }
+      ]
+    },
+    "window_menu": {
+      "enabled": true,
+      "title": "Window",
+      "items": [
+        {
+          "title": "Minimize",
+          "shortcut": "cmd+m",
+          "action": "minimize",
+          "enabled": true,
+          "separator_after": false
+        },
+        {
+          "title": "Zoom",
+          "shortcut": "",
+          "action": "zoom_window",
+          "enabled": true,
+          "separator_after": false
+        }
+      ]
+    },
+    "help_menu": {
+      "enabled": true,
+      "title": "Help",
+      "items": [
+        {
+          "title": "Documentation",
+          "shortcut": "",
+          "action": "show_help",
+          "enabled": true,
+          "separator_after": false
+        }
+      ]
+    }
+  },
   "platform": {
     "macos": {
       "toolbar": {

@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
     }
     
     // Initialize platform
-    if (platform_init() != 0) {
+    if (platform_init() < 0) {  // Only fail on actual error (-1)
         printf("Error: Failed to initialize platform\n");
         free_config(config);
         return 1;
@@ -73,6 +73,14 @@ int main(int argc, char* argv[]) {
     // Show the window
     printf("Showing window...\n");
     platform_show_window(window);
+    
+    // Setup menubar if enabled
+    if (config->menubar.enabled) {
+        platform_setup_menubar(window);
+        if (config->development.debug_mode) {
+            printf("Menubar setup completed\n");
+        }
+    }
     
     // Add some demo toolbar items if toolbar is enabled
     #ifdef PLATFORM_MACOS

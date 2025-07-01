@@ -26,6 +26,33 @@ typedef struct {
 } app_config_t;
 
 typedef struct {
+    char title[64];
+    char shortcut[16];  // e.g., "cmd+n", "cmd+o"
+    char action[32];    // e.g., "new", "open", "save"
+    bool enabled;
+    bool separator_after;
+} menu_item_config_t;
+
+typedef struct {
+    char title[64];
+    menu_item_config_t items[16];
+    int item_count;
+    bool enabled;
+} menu_config_t;
+
+typedef struct {
+    menu_config_t file_menu;
+    menu_config_t edit_menu;
+    menu_config_t view_menu;
+    menu_config_t window_menu;
+    menu_config_t help_menu;
+    bool enabled;
+    bool show_about_item;
+    bool show_preferences_item;
+    bool show_services_menu;
+} menubar_config_t;
+
+typedef struct {
     char title[256];
     int width;
     int height;
@@ -54,6 +81,7 @@ typedef struct {
 typedef struct {
     app_config_t app;
     window_config_t window;
+    menubar_config_t menubar;
     macos_config_t macos;
     development_config_t development;
 } app_configuration_t;

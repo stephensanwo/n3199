@@ -170,6 +170,114 @@ static double parse_nested_double(const char* json, const char* section, const c
     return default_value;
 }
 
+static void parse_menu_item(const char* json, const char* menu_section, int item_index, menu_item_config_t* item) {
+    char item_path[128];
+    snprintf(item_path, sizeof(item_path), "%s\": { \"items\": [ %d ]", menu_section, item_index);
+    
+    // Find the specific item in the array
+    char* menu_start = strstr(json, menu_section);
+    if (!menu_start) return;
+    
+    char* items_start = strstr(menu_start, "\"items\":");
+    if (!items_start) return;
+    
+    char* array_start = strchr(items_start, '[');
+    if (!array_start) return;
+    
+    // Navigate to the specific item
+    char* current = array_start + 1;
+    for (int i = 0; i < item_index && current; i++) {
+        current = strchr(current, '{');
+        if (current) current++;
+        current = strchr(current, '}');
+        if (current) current++;
+    }
+    
+    if (!current) return;
+    
+    char* item_start = strchr(current, '{');
+    char* item_end = strchr(item_start, '}');
+    if (!item_start || !item_end) return;
+    
+    // Extract item JSON
+    size_t item_len = item_end - item_start + 1;
+    char* item_json = malloc(item_len + 1);
+    strncpy(item_json, item_start, item_len);
+    item_json[item_len] = '\0';
+    
+    // Parse item fields using find_json_value directly
+    char* title = find_json_value(item_json, "title");
+    if (title) {
+        strncpy(item->title, title, sizeof(item->title) - 1);
+        item->title[sizeof(item->title) - 1] = '\0';
+        free(title);
+    }
+    
+    char* shortcut = find_json_value(item_json, "shortcut");
+    if (shortcut) {
+        strncpy(item->shortcut, shortcut, sizeof(item->shortcut) - 1);
+        item->shortcut[sizeof(item->shortcut) - 1] = '\0';
+        free(shortcut);
+    }
+    
+    char* action = find_json_value(item_json, "action");
+    if (action) {
+        strncpy(item->action, action, sizeof(item->action) - 1);
+        item->action[sizeof(item->action) - 1] = '\0';
+        free(action);
+    }
+    
+    char* enabled = find_json_value(item_json, "enabled");
+    if (enabled) {
+        item->enabled = (strcmp(enabled, "true") == 0);
+        free(enabled);
+    } else {
+        item->enabled = true; // default
+    }
+    
+    char* separator_after = find_json_value(item_json, "separator_after");
+    if (separator_after) {
+        item->separator_after = (strcmp(separator_after, "true") == 0);
+        free(separator_after);
+    } else {
+        item->separator_after = false; // default
+    }
+    
+    free(item_json);
+}
+
+static void parse_menu_config(const char* json, const char* menu_name, menu_config_t* menu) {
+    char menu_section[64];
+    snprintf(menu_section, sizeof(menu_section), "\"%s\"", menu_name);
+    
+    menu->enabled = parse_nested_bool(json, menu_name, "enabled", true);
+    parse_nested_string(json, menu_name, "title", menu->title, sizeof(menu->title));
+    
+    // Count items (simplified - assumes well-formed JSON)
+    char* menu_start = strstr(json, menu_section);
+    if (menu_start) {
+        char* items_start = strstr(menu_start, "\"items\":");
+        if (items_start) {
+            char* array_start = strchr(items_start, '[');
+            char* array_end = strchr(array_start, ']');
+            if (array_start && array_end) {
+                // Count objects in array
+                menu->item_count = 0;
+                char* current = array_start;
+                while (current < array_end && menu->item_count < 16) {
+                    current = strchr(current + 1, '{');
+                    if (current && current < array_end) {
+                        parse_menu_item(json, menu_name, menu->item_count, &menu->items[menu->item_count]);
+                        menu->item_count++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 app_configuration_t* load_config(const char* config_file) {
     char* json_content = read_file(config_file);
     if (!json_content) {
@@ -217,6 +325,19 @@ app_configuration_t* load_config(const char* config_file) {
     // Parse development section
     config->development.debug_mode = parse_nested_bool(json_content, "development", "debug_mode", false);
     config->development.console_logging = parse_nested_bool(json_content, "development", "console_logging", true);
+    
+    // Parse menubar configuration
+    config->menubar.enabled = parse_nested_bool(json_content, "menubar", "enabled", true);
+    config->menubar.show_about_item = parse_nested_bool(json_content, "menubar", "show_about_item", true);
+    config->menubar.show_preferences_item = parse_nested_bool(json_content, "menubar", "show_preferences_item", true);
+    config->menubar.show_services_menu = parse_nested_bool(json_content, "menubar", "show_services_menu", false);
+    
+    // Parse individual menus
+    parse_menu_config(json_content, "file_menu", &config->menubar.file_menu);
+    parse_menu_config(json_content, "edit_menu", &config->menubar.edit_menu);
+    parse_menu_config(json_content, "view_menu", &config->menubar.view_menu);
+    parse_menu_config(json_content, "window_menu", &config->menubar.window_menu);
+    parse_menu_config(json_content, "help_menu", &config->menubar.help_menu);
     
     free(json_content);
     return config;
