@@ -12,6 +12,7 @@
 #include "platform.h"
 #include "config.h"
 #include "webview_framework.h"
+#include "bridge.h"
 
 // Objective-C runtime
 #include <objc/runtime.h>
@@ -23,6 +24,9 @@
 // Global application state
 static id g_app = nil;
 static const app_configuration_t* stored_config = NULL;
+
+// Function declarations
+id create_script_message_handler(app_window_t* window);
 
 // Type definitions for Objective-C types
 typedef long NSInteger;
@@ -621,6 +625,7 @@ void platform_setup_webview(app_window_t* window) {
     Class WKWebView = objc_getClass("WKWebView");
     Class WKWebViewConfiguration = objc_getClass("WKWebViewConfiguration");
     Class WKPreferences = objc_getClass("WKPreferences");
+    Class WKUserContentController = objc_getClass("WKUserContentController");
     
     if (!WKWebView || !WKWebViewConfiguration) {
         printf("Error: WebKit framework not available\n");
@@ -646,6 +651,39 @@ void platform_setup_webview(app_window_t* window) {
     
     // Set preferences on configuration
     ((void (*)(id, SEL, id))objc_msgSend)(config, sel_registerName("setPreferences:"), preferences);
+    
+    // Create user content controller for message handling
+    id userContentController = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)WKUserContentController, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    // Set user content controller on configuration
+    ((void (*)(id, SEL, id))objc_msgSend)(config, sel_registerName("setUserContentController:"), userContentController);
+    
+    // Create script message handler
+    native->script_handler = create_script_message_handler(window);
+    if (native->script_handler) {
+        // Create NSString for handler name
+        Class NSString = objc_getClass("NSString");
+        id handlerName = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            "bridge"
+        );
+        
+        // Add script message handler
+        ((void (*)(id, SEL, id, id))objc_msgSend)(
+            userContentController,
+            sel_registerName("addScriptMessageHandler:name:"),
+            native->script_handler,
+            handlerName
+        );
+        
+        if (window->config->development.debug_mode) {
+            printf("Bridge script message handler registered\n");
+        }
+    }
     
     // Enable developer extras on the configuration (newer method)
     if (window->config->webview.developer_extras) {
@@ -848,6 +886,82 @@ void platform_close_window(app_window_t* window) {
 void platform_run_event_loop(void) {
     // Run the event loop
     ((void (*)(id, SEL))objc_msgSend)(g_app, sel_registerName("run"));
+}
+
+// Script Message Handler Implementation
+
+// Structure to hold window reference for message handler
+typedef struct {
+    Class class;
+    app_window_t* window;
+} BridgeMessageHandler;
+
+// Message handler callback function
+void bridge_message_handler_callback(id self, SEL _cmd, id userContentController, id message) {
+    // Get the window reference from the handler structure
+    BridgeMessageHandler* handler = (BridgeMessageHandler*)self;
+    app_window_t* window = handler->window;
+    
+    if (!window) {
+        printf("Bridge message handler: No window reference\n");
+        return;
+    }
+    
+    // Get message body from the WKScriptMessage (second parameter)
+    id body = ((id (*)(id, SEL))objc_msgSend)(message, sel_registerName("body"));
+    if (!body) {
+        printf("Bridge message handler: No message body\n");
+        return;
+    }
+    
+    // Convert message body to C string
+    const char* messageString = ((const char* (*)(id, SEL))objc_msgSend)(body, sel_registerName("UTF8String"));
+    if (!messageString) {
+        printf("Bridge message handler: Failed to get message string\n");
+        return;
+    }
+    
+    if (window->config->development.debug_mode) {
+        printf("Bridge received WebKit message: %s\n", messageString);
+    }
+    
+    // Forward to bridge system
+    bridge_handle_message(messageString, window);
+}
+
+// Create script message handler
+id create_script_message_handler(app_window_t* window) {
+    // Create a new class for the message handler
+    Class handlerClass = objc_allocateClassPair(objc_getClass("NSObject"), "BridgeMessageHandler", sizeof(BridgeMessageHandler) - sizeof(Class));
+    if (!handlerClass) {
+        printf("Failed to create script message handler class\n");
+        return nil;
+    }
+    
+    // Add the userContentController:didReceiveScriptMessage: method
+    SEL messageSelector = sel_registerName("userContentController:didReceiveScriptMessage:");
+    if (!class_addMethod(handlerClass, messageSelector, (IMP)bridge_message_handler_callback, "v@:@@")) {
+        printf("Failed to add message handler method\n");
+        objc_disposeClassPair(handlerClass);
+        return nil;
+    }
+    
+    // Register the class
+    objc_registerClassPair(handlerClass);
+    
+    // Create an instance
+    id handler = ((id (*)(id, SEL))objc_msgSend)((id)handlerClass, sel_registerName("alloc"));
+    handler = ((id (*)(id, SEL))objc_msgSend)(handler, sel_registerName("init"));
+    
+    // Store the window reference in the handler
+    BridgeMessageHandler* bridgeHandler = (BridgeMessageHandler*)handler;
+    bridgeHandler->window = window;
+    
+    if (window->config->development.debug_mode) {
+        printf("Script message handler created successfully\n");
+    }
+    
+    return handler;
 }
 
 #endif // __APPLE__ 

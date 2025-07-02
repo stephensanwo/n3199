@@ -3,12 +3,16 @@
 #include <signal.h>
 #include "config.h"
 #include "platform.h"
+#include "bridge.h"
 
 // Global window reference for signal handling
 static app_window_t* g_main_window = NULL;
 
 static void cleanup(void) {
     if (g_main_window) {
+        // Cleanup bridge system
+        bridge_cleanup();
+        
         platform_close_window(g_main_window);
         free(g_main_window);
     }
@@ -76,6 +80,17 @@ int main(int argc, char* argv[]) {
     // Setup webview if enabled
     if (app_config->webview.enabled) {
         platform_setup_webview(g_main_window);
+        
+        // Initialize bridge system after webview is ready
+        printf("Initializing bridge system...\n");
+        if (bridge_init(g_main_window)) {
+            printf("Bridge system initialized successfully\n");
+            // List all registered functions for debugging
+            bridge_list_functions();
+        } else {
+            printf("Failed to initialize bridge system\n");
+        }
+        
         if (app_config->development.debug_mode) {
             printf("WebView setup completed\n");
         }

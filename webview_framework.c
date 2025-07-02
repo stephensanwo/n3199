@@ -49,8 +49,29 @@ bool run_build_command(const webview_framework_config_t* config) {
     return run_command(build_cmd, NULL, 0);
 }
 
+bool check_server_ready(const char* url) {
+    char curl_cmd[512];
+    snprintf(curl_cmd, sizeof(curl_cmd), "curl -s -o /dev/null -w '%%{http_code}' %s", url);
+    
+    // Try up to 30 times (15 seconds total)
+    for (int i = 0; i < 30; i++) {
+        char output[16] = {0};
+        if (run_command(curl_cmd, output, sizeof(output))) {
+            int status_code = atoi(output);
+            if (status_code >= 200 && status_code < 400) {
+                printf("Dev server is ready (HTTP %d)\n", status_code);
+                return true;
+            }
+        }
+        usleep(500000); // Wait 500ms between attempts
+    }
+    
+    printf("Dev server failed to respond\n");
+    return false;
+}
+
 bool start_dev_server(const webview_framework_config_t* config) {
-    if (!config) return false;
+    if (!config || !config->dev_url) return false;
     
     printf("Starting development server...\n");
     
@@ -75,9 +96,15 @@ bool start_dev_server(const webview_framework_config_t* config) {
         exit(1);
     }
     
-    // Parent process - wait a bit for server to start
-    sleep(2);
-    printf("Dev server started with PID: %d\n", dev_server_pid);
+    // Parent process - wait for server to be ready
+    printf("Waiting for dev server to be ready...\n");
+    if (!check_server_ready(config->dev_url)) {
+        printf("Dev server failed to start\n");
+        stop_dev_server();
+        return false;
+    }
+    
+    printf("Dev server started successfully (PID: %d)\n", dev_server_pid);
     return true;
 }
 
