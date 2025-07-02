@@ -1,11 +1,21 @@
 // Bridge implementation for frontend
+// This file is external to the webview and gets linked during build
 import type {
   BridgeAPI,
   BridgeMessage,
   BridgeCallback,
   WindowSize,
   AppConfig,
-} from "./types/bridge";
+} from "./bridge.d";
+
+// Re-export all types for convenience
+export type {
+  BridgeAPI,
+  BridgeMessage,
+  BridgeCallback,
+  WindowSize,
+  AppConfig,
+} from "./bridge.d";
 
 class Bridge implements BridgeAPI {
   private nextCallbackId = 1;
@@ -103,4 +113,5 @@ declare global {
 
 // Create and export bridge instance
 const bridge = new Bridge();
+export { bridge };
 export default bridge;

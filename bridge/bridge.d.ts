@@ -64,6 +64,10 @@ export interface BridgeAPI {
   };
 }
 
+// Default export type for the bridge instance
+declare const bridge: BridgeAPI;
+export default bridge;
+
 // Global augmentations
 declare global {
   interface Window {

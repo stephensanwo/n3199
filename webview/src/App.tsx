@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import "./App.css";
-import bridge from "./bridge";
+import bridge from "./bridge/bridge";
 
 function App() {
   const [count, setCount] = useState(0);
@@ -14,7 +14,7 @@ function App() {
     console.log("Initializing counter from C backend...");
     bridge.counter
       .getValue()
-      .then((value) => {
+      .then((value: number) => {
         console.log("Initial counter value:", value);
         setCount(value);
       })
