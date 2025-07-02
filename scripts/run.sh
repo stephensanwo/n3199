@@ -2,43 +2,53 @@
 
 # Script to build and run the C desktop application with TypeScript type syncing
 
-echo "=== C Desktop App Builder ==="
+echo "=== C Desktop App Runner ==="
 echo ""
-
-# Check dependencies
-if ! command -v make &> /dev/null; then
-    echo "Error: make is not installed. Please install Xcode command line tools."
-    exit 1
-fi
-
-if ! command -v gcc &> /dev/null; then
-    echo "Error: gcc is not installed. Please install Xcode command line tools."
-    exit 1
-fi
 
 # Ensure we're in the project root
 cd "$(dirname "$0")/.." || exit 1
 
-echo "Syncing bridge types..."
-./scripts/sync-types.sh
+# Parse command line arguments
+DEBUG_MODE=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --debug)
+            DEBUG_MODE=true
+            shift
+            ;;
+        --help)
+            echo "Usage: $0 [options]"
+            echo "Options:"
+            echo "  --debug    Build and run with debug symbols"
+            echo "  --help     Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Build the application
+echo "Building application..."
+if [ "$DEBUG_MODE" = true ]; then
+    ./scripts/build.sh --debug
+else
+    ./scripts/build.sh
+fi
 
 if [ $? -ne 0 ]; then
-    echo "Error: Failed to sync bridge types."
+    echo "Error: Build failed."
     exit 1
 fi
 
-echo "Building application..."
-make clean
-make all
+echo ""
+echo "Build successful! Starting application..."
+echo "Close the window or press Ctrl+C to quit."
+echo ""
 
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "Build successful! Starting application..."
-    echo "Close the window or press Ctrl+C to quit."
-    echo ""
-    ./desktop_app
-else
-    echo ""
-    echo "Build failed. Please check for errors above."
-    exit 1
-fi 
+# Run the application
+./desktop_app 

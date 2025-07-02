@@ -1,71 +1,87 @@
-# Makefile for C Desktop App
-CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
-PLATFORM_FLAGS = -DPLATFORM_MACOS -framework Cocoa -framework Foundation -framework WebKit
+# Clean Makefile for C Desktop Application
+# Build logic has been moved to scripts for better maintainability
 
-# Source files
-SRCS = main.c config.c webview_framework.c platform_macos.c bridge.c bridge_builtin.c bridge_custom.c
-OBJS = $(SRCS:.c=.o)
-TARGET = desktop_app
+.DEFAULT_GOAL := help
 
-# Default target
-.PHONY: all
-all: $(TARGET)
+# Project configuration
+PROJECT_NAME = C Desktop Application
+SCRIPTS_DIR = scripts
+
+# Ensure scripts are executable
+.PHONY: scripts-setup
+scripts-setup:
+	@chmod +x $(SCRIPTS_DIR)/*.sh
+
+# Setup project dependencies and environment
+.PHONY: setup
+setup: scripts-setup
+	@./$(SCRIPTS_DIR)/setup.sh
 
 # Build the application
-$(TARGET): $(OBJS)
-	@echo "Linking $(TARGET)..."
-	$(CC) $(CFLAGS) $(PLATFORM_FLAGS) -o $(TARGET) $(OBJS)
-	@echo "Build complete!"
+.PHONY: build
+build: scripts-setup
+	@./$(SCRIPTS_DIR)/build.sh
 
-# Compile source files to object files
-%.o: %.c
-	@echo "Compiling $<..."
-	$(CC) $(CFLAGS) $(PLATFORM_FLAGS) -c $< -o $@
+# Build with debug symbols
+.PHONY: debug
+debug: scripts-setup
+	@./$(SCRIPTS_DIR)/build.sh --debug
 
 # Clean build artifacts
 .PHONY: clean
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f $(TARGET) $(OBJS)
-	@echo "Clean complete!"
+	@rm -f desktop_app *.o
+	@echo "✓ Clean completed"
 
-# Debug build with extra information
-.PHONY: debug
-debug: CFLAGS += -g -DDEBUG
-debug: all
+# Clean and rebuild
+.PHONY: rebuild
+rebuild: scripts-setup
+	@./$(SCRIPTS_DIR)/build.sh --clean
 
-# Show help
-.PHONY: help
-help:
-	@echo "Available targets:"
-	@echo "  all        - Build the application (default)"
-	@echo "  clean      - Remove build artifacts"
-	@echo "  debug      - Build with debug symbols"
-	@echo "  run        - Build and run the application"
-	@echo "  help       - Show this help message"
+# Build and run the application
+.PHONY: run
+run: scripts-setup
+	@./$(SCRIPTS_DIR)/run.sh
 
-# Show project info
+# Run in debug mode
+.PHONY: run-debug
+run-debug: scripts-setup
+	@./$(SCRIPTS_DIR)/run.sh --debug
+
+# Sync TypeScript bridge types
+.PHONY: sync-types
+sync-types: scripts-setup
+	@./$(SCRIPTS_DIR)/sync-types.sh
+
+# Show project information
 .PHONY: info
 info:
-	@echo "Platform: $(shell uname)"
+	@echo "$(PROJECT_NAME)"
+	@echo "Platform: $(shell uname -s)"
+	@echo "Architecture: $(shell uname -m)"
+	@echo "Scripts directory: $(SCRIPTS_DIR)"
 
-# Add after the existing targets
-.PHONY: sync-types scripts-setup run
-sync-types:
-	@chmod +x scripts/sync-types.sh
-	@./scripts/sync-types.sh
+# Show available targets
+.PHONY: help
+help:
+	@echo "$(PROJECT_NAME) - Build System"
+	@echo ""
+	@echo "Available targets:"
+	@echo "  setup      - Setup project dependencies and environment"
+	@echo "  build      - Build the application"
+	@echo "  debug      - Build with debug symbols"
+	@echo "  clean      - Remove build artifacts"
+	@echo "  rebuild    - Clean and rebuild"
+	@echo "  run        - Build and run the application"
+	@echo "  run-debug  - Build and run in debug mode"
+	@echo "  sync-types - Sync TypeScript bridge types"
+	@echo "  info       - Show project information"
+	@echo "  help       - Show this help message"
+	@echo ""
+	@echo "For first-time setup, run: make setup"
+	@echo "For normal development, run: make run"
 
-scripts-setup:
-	@mkdir -p scripts
-	@chmod +x scripts/run.sh
-	@chmod +x scripts/sync-types.sh
-
-# Update the build target to include types
-build: scripts-setup sync-types $(TARGET)
-
-# Add a run target
-run: scripts-setup
-	@./scripts/run.sh
-
-.PHONY: all run clean debug help info 
+# Legacy compatibility (redirect to scripts)
+.PHONY: all
+all: build 
