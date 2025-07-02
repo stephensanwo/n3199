@@ -16,7 +16,8 @@ CC="gcc"
 CFLAGS="-Wall -Wextra -std=c99"
 PLATFORM_FLAGS="-DPLATFORM_MACOS -framework Cocoa -framework Foundation -framework WebKit"
 SRCS="main.c config.c webview_framework.c platform_macos.c bridge.c bridge_builtin.c bridge_custom.c"
-TARGET="desktop_app"
+OUTPUT_DIR="output"
+TARGET="$OUTPUT_DIR/desktop_app"
 
 # Function to print status messages
 print_status() {
@@ -59,10 +60,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+print_status "Output directory created: $OUTPUT_DIR"
+
 # Clean if requested
 if [ "$CLEAN_FIRST" = true ]; then
     echo "Cleaning previous build artifacts..."
-    rm -f $TARGET *.o
+    rm -f $TARGET $OUTPUT_DIR/*.o
     print_status "Clean completed"
     echo ""
 fi
@@ -76,7 +81,7 @@ echo ""
 # Compile source files
 echo "Compiling source files..."
 for src in $SRCS; do
-    obj="${src%.c}.o"
+    obj="$OUTPUT_DIR/${src%.c}.o"
     echo "  Compiling $src -> $obj"
     if ! $CC $CFLAGS $PLATFORM_FLAGS -c "$src" -o "$obj"; then
         print_error "Failed to compile $src"
@@ -88,7 +93,7 @@ print_status "All source files compiled"
 # Link the application
 echo ""
 echo "Linking application..."
-OBJS=$(echo $SRCS | sed 's/\.c/.o/g')
+OBJS=$(echo $SRCS | sed "s/\.c/.o/g" | sed "s/[^ ]* */$OUTPUT_DIR\/&/g")
 if ! $CC $CFLAGS $PLATFORM_FLAGS -o $TARGET $OBJS; then
     print_error "Failed to link application"
     exit 1

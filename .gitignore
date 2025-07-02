@@ -1,0 +1,30 @@
+# Build artifacts and output
+output/
+*.o
+*.exe
+*.app
+*.dSYM/
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+output.log
+
+# Temporary files
+tmp/
+temp/ 

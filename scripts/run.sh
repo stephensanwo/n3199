@@ -8,6 +8,10 @@ echo ""
 # Ensure we're in the project root
 cd "$(dirname "$0")/.." || exit 1
 
+# Configuration
+OUTPUT_DIR="output"
+EXECUTABLE="$OUTPUT_DIR/desktop_app"
+
 # Parse command line arguments
 DEBUG_MODE=false
 
@@ -51,4 +55,4 @@ echo "Close the window or press Ctrl+C to quit."
 echo ""
 
 # Run the application
-./desktop_app 
+$EXECUTABLE 

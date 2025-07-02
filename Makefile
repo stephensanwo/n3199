@@ -6,6 +6,7 @@
 # Project configuration
 PROJECT_NAME = C Desktop Application
 SCRIPTS_DIR = scripts
+OUTPUT_DIR = output
 
 # Ensure scripts are executable
 .PHONY: scripts-setup
@@ -31,7 +32,7 @@ debug: scripts-setup
 .PHONY: clean
 clean:
 	@echo "Cleaning build artifacts..."
-	@rm -f desktop_app *.o
+	@rm -rf $(OUTPUT_DIR)
 	@echo "✓ Clean completed"
 
 # Clean and rebuild
@@ -61,6 +62,7 @@ info:
 	@echo "Platform: $(shell uname -s)"
 	@echo "Architecture: $(shell uname -m)"
 	@echo "Scripts directory: $(SCRIPTS_DIR)"
+	@echo "Output directory: $(OUTPUT_DIR)"
 
 # Show available targets
 .PHONY: help
