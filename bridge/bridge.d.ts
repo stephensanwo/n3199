@@ -1,9 +1,13 @@
-// Manual TypeScript definitions for C Bridge API
-// These types are manually maintained for full type safety
+// Modern TypeScript definitions for C Bridge API
+// Clean sidebar-only API without legacy drawer support
 
 export interface WindowSize {
   width: number;
   height: number;
+}
+
+export interface SidebarState {
+  visible: boolean;
 }
 
 export interface AppConfig {
@@ -44,6 +48,14 @@ export interface BridgeAPI {
     restore(): Promise<void>;
   };
 
+  // Modern Sidebar functions (NSSplitViewController)
+  sidebar: {
+    toggle(): Promise<void>;
+    show(): Promise<void>;
+    hide(): Promise<void>;
+    getState(): Promise<SidebarState>;
+  };
+
   // System functions
   system: {
     getPlatform(): Promise<"macos" | "windows" | "linux">;
@@ -73,6 +85,10 @@ declare global {
   interface Window {
     bridge: BridgeAPI;
     handleBridgeResponse(id: number, success: boolean, result: unknown): void;
+    // Native sidebar state callback for real-time updates
+    nativeSidebar?: {
+      onStateChange(visible: boolean): void;
+    };
     webkit?: {
       messageHandlers: {
         bridge: {

@@ -41,6 +41,36 @@ typedef struct {
 } menu_config_t;
 
 typedef struct {
+    char title[64];
+    char action[32];    // e.g., "navigate_to_home", "show_settings"
+    bool enabled;
+    bool separator_after;
+} sidebar_item_config_t;
+
+typedef struct {
+    char title[64];
+    sidebar_item_config_t items[16];
+    int item_count;
+    bool enabled;
+    int width;  // Sidebar width in pixels
+    int max_width;  // Maximum sidebar width in pixels (0 = no limit)
+    bool resizable;
+    bool collapsible;
+    bool start_collapsed;
+} sidebar_config_t;
+
+typedef struct {
+    bool enabled;
+    bool show_toggle_button;  // Show native sidebar toggle button in toolbar
+} macos_toolbar_config_t;
+
+typedef struct {
+    macos_toolbar_config_t toolbar;
+    sidebar_config_t sidebar;
+    bool show_title_bar;  // Show traditional title bar (default: false for modern appearance)
+} macos_config_t;
+
+typedef struct {
     menu_config_t file_menu;
     menu_config_t edit_menu;
     menu_config_t view_menu;
@@ -64,14 +94,6 @@ typedef struct {
     bool maximizable;
     bool closable;
 } window_config_t;
-
-typedef struct {
-    bool enabled;
-} macos_toolbar_config_t;
-
-typedef struct {
-    macos_toolbar_config_t toolbar;
-} macos_config_t;
 
 typedef struct {
     bool debug_mode;

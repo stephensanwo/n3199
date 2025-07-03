@@ -337,6 +337,119 @@ static void parse_webview_framework_config(const char* json, webview_framework_c
     free(webview_content);
 }
 
+static void parse_sidebar_item(const char* json, const char* sidebar_section, int item_index, sidebar_item_config_t* item) {
+    char item_path[128];
+    snprintf(item_path, sizeof(item_path), "%s\": { \"items\": [ %d ]", sidebar_section, item_index);
+    
+    // Find the specific item in the array
+    char* sidebar_start = strstr(json, sidebar_section);
+    if (!sidebar_start) return;
+    
+    char* items_start = strstr(sidebar_start, "\"items\":");
+    if (!items_start) return;
+    
+    char* array_start = strchr(items_start, '[');
+    if (!array_start) return;
+    
+    // Navigate to the specific item
+    char* current = array_start + 1;
+    for (int i = 0; i < item_index && current; i++) {
+        current = strchr(current, '{');
+        if (current) current++;
+        current = strchr(current, '}');
+        if (current) current++;
+    }
+    
+    if (!current) return;
+    
+    char* item_start = strchr(current, '{');
+    char* item_end = strchr(item_start, '}');
+    if (!item_start || !item_end) return;
+    
+    // Extract item JSON
+    size_t item_len = item_end - item_start + 1;
+    char* item_json = malloc(item_len + 1);
+    strncpy(item_json, item_start, item_len);
+    item_json[item_len] = '\0';
+    
+    // Parse item fields
+    char* title = find_json_value(item_json, "title");
+    if (title) {
+        strncpy(item->title, title, sizeof(item->title) - 1);
+        item->title[sizeof(item->title) - 1] = '\0';
+        free(title);
+    }
+    
+    char* action = find_json_value(item_json, "action");
+    if (action) {
+        strncpy(item->action, action, sizeof(item->action) - 1);
+        item->action[sizeof(item->action) - 1] = '\0';
+        free(action);
+    }
+    
+    char* enabled = find_json_value(item_json, "enabled");
+    if (enabled) {
+        item->enabled = (strcmp(enabled, "true") == 0);
+        free(enabled);
+    } else {
+        item->enabled = true; // default
+    }
+    
+    char* separator_after = find_json_value(item_json, "separator_after");
+    if (separator_after) {
+        item->separator_after = (strcmp(separator_after, "true") == 0);
+        free(separator_after);
+    } else {
+        item->separator_after = false; // default
+    }
+    
+    free(item_json);
+}
+
+static void parse_sidebar_config(const char* json, sidebar_config_t* sidebar) {
+    // Set defaults
+    strcpy(sidebar->title, "Navigation");
+    sidebar->enabled = false;
+    sidebar->width = 200;
+    sidebar->max_width = 0;  // No limit by default
+    sidebar->resizable = true;
+    sidebar->collapsible = true;
+    sidebar->start_collapsed = false;
+    sidebar->item_count = 0;
+    
+    sidebar->enabled = parse_nested_bool(json, "sidebar", "enabled", false);
+    parse_nested_string(json, "sidebar", "title", sidebar->title, sizeof(sidebar->title));
+    sidebar->width = parse_int(find_nested_json_value(json, "sidebar", "width") ?: "200", "width", 200);
+    sidebar->max_width = parse_int(find_nested_json_value(json, "sidebar", "max_width") ?: "0", "max_width", 0);
+    sidebar->resizable = parse_nested_bool(json, "sidebar", "resizable", true);
+    sidebar->collapsible = parse_nested_bool(json, "sidebar", "collapsible", true);
+    sidebar->start_collapsed = parse_nested_bool(json, "sidebar", "start_collapsed", false);
+    
+    // Count and parse items
+    char* sidebar_start = strstr(json, "\"sidebar\"");
+    if (sidebar_start) {
+        char* items_start = strstr(sidebar_start, "\"items\":");
+        if (items_start) {
+            char* array_start = strchr(items_start, '[');
+            char* array_end = strchr(array_start, ']');
+            if (array_start && array_end) {
+                // Count objects in array
+                sidebar->item_count = 0;
+                char* current = array_start;
+                while (current < array_end && sidebar->item_count < 16) {
+                    current = strchr(current + 1, '{');
+                    if (current && current < array_end) {
+                        parse_sidebar_item(json, "sidebar", sidebar->item_count, &sidebar->items[sidebar->item_count]);
+                        sidebar->item_count++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 app_configuration_t* load_config(const char* config_file) {
     char* json_content = read_file(config_file);
     if (!json_content) {
@@ -373,13 +486,48 @@ app_configuration_t* load_config(const char* config_file) {
     config->window.maximizable = parse_nested_bool(json_content, "window", "maximizable", true);
     config->window.closable = parse_nested_bool(json_content, "window", "closable", true);
     
-    // Parse macOS-specific configuration
-    #ifdef PLATFORM_MACOS
+    // Use a simpler approach to parse nested macOS configurations
     char* macos_section = strstr(json_content, "\"macos\"");
     if (macos_section) {
-        config->macos.toolbar.enabled = parse_nested_bool(json_content, "toolbar", "enabled", false);
+        // Parse toolbar.enabled within macos section
+        char* toolbar_section = strstr(macos_section, "\"toolbar\"");
+        if (toolbar_section) {
+            char* enabled_val = find_json_value(toolbar_section, "enabled");
+            if (enabled_val) {
+                config->macos.toolbar.enabled = (strcmp(enabled_val, "true") == 0);
+                free(enabled_val);
+            } else {
+                config->macos.toolbar.enabled = false;
+            }
+            
+            char* show_toggle_val = find_json_value(toolbar_section, "show_toggle_button");
+            if (show_toggle_val) {
+                config->macos.toolbar.show_toggle_button = (strcmp(show_toggle_val, "true") == 0);
+                free(show_toggle_val);
+            } else {
+                config->macos.toolbar.show_toggle_button = true;
+            }
+        } else {
+            config->macos.toolbar.enabled = false;
+            config->macos.toolbar.show_toggle_button = true;
+        }
+        
+        // Parse sidebar configuration within macOS section
+        parse_sidebar_config(json_content, &config->macos.sidebar);
+        
+        // Parse show_title_bar within macOS section
+        char* title_bar_val = find_json_value(macos_section, "show_title_bar");
+        if (title_bar_val) {
+            config->macos.show_title_bar = (strcmp(title_bar_val, "true") == 0);
+            free(title_bar_val);
+        } else {
+            config->macos.show_title_bar = false;  // Default to false for modern appearance
+        }
+    } else {
+        config->macos.toolbar.enabled = false;
+        config->macos.toolbar.show_toggle_button = true;
+        config->macos.show_title_bar = false;  // Default to false for modern appearance
     }
-    #endif
     
     // Parse development section
     config->development.debug_mode = parse_nested_bool(json_content, "development", "debug_mode", false);
@@ -428,6 +576,7 @@ void print_config(const app_configuration_t* config) {
     
     #ifdef PLATFORM_MACOS
     printf("macOS Toolbar: %s\n", config->macos.toolbar.enabled ? "Enabled" : "Disabled");
+    printf("macOS Title Bar: %s\n", config->macos.show_title_bar ? "Visible" : "Hidden");
     #endif
     
     printf("Debug Mode: %s\n", config->development.debug_mode ? "On" : "Off");

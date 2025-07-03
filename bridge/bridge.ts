@@ -1,11 +1,12 @@
-// Bridge implementation for frontend
-// This file is external to the webview and gets linked during build
+// Modern Bridge implementation for frontend
+// Clean sidebar-only API without legacy drawer support
 import type {
   BridgeAPI,
   BridgeMessage,
   BridgeCallback,
   WindowSize,
   AppConfig,
+  SidebarState,
 } from "./bridge.d";
 
 // Re-export all types for convenience
@@ -15,6 +16,7 @@ export type {
   BridgeCallback,
   WindowSize,
   AppConfig,
+  SidebarState,
 } from "./bridge.d";
 
 class Bridge implements BridgeAPI {
@@ -37,6 +39,21 @@ class Bridge implements BridgeAPI {
         }
         this.callbacks.delete(id);
       }
+    };
+
+    // Set up native sidebar state change handler
+    window.nativeSidebar = {
+      onStateChange: (visible: boolean) => {
+        // Dispatch custom event for sidebar state changes
+        const event = new CustomEvent("sidebarStateChanged", {
+          detail: { visible },
+        });
+        window.dispatchEvent(event);
+
+        console.log(
+          `Native sidebar state changed: ${visible ? "visible" : "hidden"}`
+        );
+      },
     };
   }
 
@@ -78,6 +95,14 @@ class Bridge implements BridgeAPI {
     restore: () => this.call<void>("window.restore"),
   };
 
+  // Modern Sidebar functions (NSSplitViewController)
+  sidebar = {
+    toggle: () => this.call<void>("sidebar.toggle"),
+    show: () => this.call<void>("sidebar.show"),
+    hide: () => this.call<void>("sidebar.hide"),
+    getState: () => this.call<SidebarState>("sidebar.getState"),
+  };
+
   // System functions
   system = {
     getPlatform: () =>
@@ -108,10 +133,19 @@ declare global {
       success: boolean,
       result: unknown
     ) => void;
+    nativeSidebar?: {
+      onStateChange(visible: boolean): void;
+    };
   }
 }
 
 // Create and export bridge instance
 const bridge = new Bridge();
+
+// Make bridge available globally for debugging
+if (typeof window !== "undefined") {
+  window.bridge = bridge;
+}
+
 export { bridge };
 export default bridge;

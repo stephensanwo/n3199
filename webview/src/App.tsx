@@ -8,6 +8,7 @@ function App() {
   const [count, setCount] = useState(0);
   const [greeting, setGreeting] = useState("");
   const [error, setError] = useState("");
+  const [sidebarVisible, setSidebarVisible] = useState(false);
 
   // Initialize counter from C backend
   useEffect(() => {
@@ -21,6 +22,20 @@ function App() {
       .catch((err: Error) => {
         console.error("Failed to get initial counter value:", err);
         setError(`Failed to initialize: ${err.message}`);
+      });
+  }, []);
+
+  // Get initial sidebar state
+  useEffect(() => {
+    console.log("Getting initial sidebar state...");
+    bridge.sidebar
+      .getState()
+      .then((state) => {
+        console.log("Initial sidebar state:", state);
+        setSidebarVisible(state.visible);
+      })
+      .catch((err: Error) => {
+        console.error("Failed to get sidebar state:", err);
       });
   }, []);
 
@@ -68,6 +83,58 @@ function App() {
       console.error("Failed to get greeting:", err);
       setError(
         `Greeting failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  };
+
+  // Sidebar Handlers
+  const handleSidebarToggle = async () => {
+    try {
+      console.log("Toggling sidebar...");
+      await bridge.sidebar.toggle();
+      const state = await bridge.sidebar.getState();
+      setSidebarVisible(state.visible);
+      setError(""); // Clear any previous errors
+    } catch (err) {
+      console.error("Failed to toggle sidebar:", err);
+      setError(
+        `Sidebar toggle failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+  };
+
+  const handleSidebarShow = async () => {
+    try {
+      console.log("Showing sidebar...");
+      await bridge.sidebar.show();
+      const state = await bridge.sidebar.getState();
+      setSidebarVisible(state.visible);
+      setError(""); // Clear any previous errors
+    } catch (err) {
+      console.error("Failed to show sidebar:", err);
+      setError(
+        `Sidebar show failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+  };
+
+  const handleSidebarHide = async () => {
+    try {
+      console.log("Hiding sidebar...");
+      await bridge.sidebar.hide();
+      const state = await bridge.sidebar.getState();
+      setSidebarVisible(state.visible);
+      setError(""); // Clear any previous errors
+    } catch (err) {
+      console.error("Failed to hide sidebar:", err);
+      setError(
+        `Sidebar hide failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`
       );
     }
   };
@@ -125,6 +192,19 @@ function App() {
             <strong>Response from C:</strong> {greeting}
           </div>
         )}
+      </div>
+
+      <div className="card">
+        <h3>Sidebar Controls</h3>
+        <div style={{ marginBottom: "1rem" }}>
+          <strong>Sidebar Status:</strong>{" "}
+          {sidebarVisible ? "Visible" : "Hidden"}
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button onClick={handleSidebarToggle}>Toggle Sidebar</button>
+          <button onClick={handleSidebarShow}>Show Sidebar</button>
+          <button onClick={handleSidebarHide}>Hide Sidebar</button>
+        </div>
       </div>
 
       <p className="read-the-docs">

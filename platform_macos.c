@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <math.h>
 #include "platform.h"
 #include "config.h"
 #include "webview_framework.h"
@@ -26,22 +27,590 @@ static id g_app = nil;
 static const app_configuration_t* stored_config = NULL;
 
 // Function declarations
-id create_script_message_handler(app_window_t* window);
+static id create_script_message_handler(app_window_t* window);
+static void platform_send_sidebar_state_to_webview(app_window_t* window, bool visible);
 
-// Type definitions for Objective-C types
-typedef long NSInteger;
-typedef unsigned long NSUInteger;
+// Forward declarations
+static void cleanup_main_window(void);
+static void signal_handler(int sig);
+static Class create_window_delegate_class(void);
+static void setup_modern_toolbar(app_window_t* window, platform_native_window_t* native);
 
-// Platform-specific window structure
-typedef struct {
-    id ns_app;
-    id ns_window;
-    id ns_toolbar;
-    id window_delegate;
-    id webview;
-    id webview_config;
-    id script_handler;
-} platform_native_window_t;
+// Forward declarations for delegate methods
+static NSInteger outline_view_number_of_children(id self, SEL _cmd, id outlineView, id item);
+static id outline_view_child_of_item(id self, SEL _cmd, id outlineView, NSInteger index, id item);
+static BOOL outline_view_is_item_expandable(id self, SEL _cmd, id outlineView, id item);
+static id outline_view_view_for_table_column(id self, SEL _cmd, id outlineView, id tableColumn, id item);
+static void outline_view_selection_did_change(id self, SEL _cmd, id notification);
+static BOOL split_view_can_collapse_subview(id self, SEL _cmd, id splitView, id subview);
+static CGFloat split_view_constrain_min_coordinate(id self, SEL _cmd, id splitView, CGFloat proposedMin, NSInteger dividerIndex);
+static CGFloat split_view_constrain_max_coordinate(id self, SEL _cmd, id splitView, CGFloat proposedMax, NSInteger dividerIndex);
+static BOOL split_view_should_adjust_size_of_subview(id self, SEL _cmd, id splitView, id subview);
+
+// Toolbar delegate methods
+static id toolbar_item_for_identifier(id self, SEL _cmd, id toolbar, id identifier, BOOL willBeInserted);
+static id toolbar_default_item_identifiers(id self, SEL _cmd, id toolbar);
+static id toolbar_allowed_item_identifiers(id self, SEL _cmd, id toolbar);
+static Class create_toolbar_delegate_class(void);
+
+// Outline view data source implementation
+static NSInteger outline_view_number_of_children(id self, SEL _cmd, id outlineView, id item) {
+    (void)self; (void)_cmd; (void)outlineView; // Suppress unused warnings
+    
+    // Get window from stored data
+    id windowValue = objc_getAssociatedObject(self, "window");
+    app_window_t* window = NULL;
+    if (windowValue) {
+        window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(windowValue, sel_registerName("pointerValue"));
+    }
+    if (!window || item) {
+        // Root level items only for now
+        return window ? window->config->macos.sidebar.item_count : 0;
+    }
+    
+    return 0; // No children for items (flat structure)
+}
+
+static id outline_view_child_of_item(id self, SEL _cmd, id outlineView, NSInteger index, id item) {
+    (void)self; (void)_cmd; (void)outlineView; // Suppress unused warnings
+    
+    // Get window from stored data
+    id windowValue = objc_getAssociatedObject(self, "window");
+    app_window_t* window = NULL;
+    if (windowValue) {
+        window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(windowValue, sel_registerName("pointerValue"));
+    }
+    if (!window || item) return nil; // Only handle root level items
+    
+    if (index >= 0 && index < window->config->macos.sidebar.item_count) {
+        // Create a string representing the item
+        Class NSString = objc_getClass("NSString");
+        return ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            window->config->macos.sidebar.items[index].title
+        );
+    }
+    
+    return nil;
+}
+
+static BOOL outline_view_is_item_expandable(id self, SEL _cmd, id outlineView, id item) {
+    (void)self; (void)_cmd; (void)outlineView; (void)item; // Suppress unused warnings
+    return NO; // Flat structure for now
+}
+
+static id outline_view_view_for_table_column(id self, SEL _cmd, id outlineView, id tableColumn, id item) {
+    (void)self; (void)_cmd; (void)tableColumn; // Suppress unused warnings
+    
+    Class NSTableCellView = objc_getClass("NSTableCellView");
+    Class NSTextField = objc_getClass("NSTextField");
+    Class NSColor = objc_getClass("NSColor");
+    Class NSString = objc_getClass("NSString");
+    
+    // Try to reuse existing cell
+    id cellIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        "DataCell"
+    );
+    
+    id cellView = ((id (*)(id, SEL, id, id))objc_msgSend)(
+        outlineView,
+        sel_registerName("makeViewWithIdentifier:owner:"),
+        cellIdentifier,
+        self
+    );
+    
+    if (!cellView) {
+        // Create new cell view
+        cellView = ((id (*)(id, SEL))objc_msgSend)(
+            ((id (*)(id, SEL))objc_msgSend)((id)NSTableCellView, sel_registerName("alloc")),
+            sel_registerName("init")
+        );
+        
+        // Set identifier
+        ((void (*)(id, SEL, id))objc_msgSend)(cellView, sel_registerName("setIdentifier:"), cellIdentifier);
+        
+        // Create text field
+        id textField = ((id (*)(id, SEL))objc_msgSend)(
+            ((id (*)(id, SEL))objc_msgSend)((id)NSTextField, sel_registerName("alloc")),
+            sel_registerName("init")
+        );
+        
+        // Configure text field
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(textField, sel_registerName("setTranslatesAutoresizingMaskIntoConstraints:"), NO);
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(textField, sel_registerName("setBordered:"), NO);
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(textField, sel_registerName("setEditable:"), NO);
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(textField, sel_registerName("setSelectable:"), NO);
+        
+        // Set background color to clear
+        id clearColor = ((id (*)(id, SEL))objc_msgSend)((id)NSColor, sel_registerName("clearColor"));
+        ((void (*)(id, SEL, id))objc_msgSend)(textField, sel_registerName("setBackgroundColor:"), clearColor);
+        
+        // Add to cell view
+        ((void (*)(id, SEL, id))objc_msgSend)(cellView, sel_registerName("addSubview:"), textField);
+        ((void (*)(id, SEL, id))objc_msgSend)(cellView, sel_registerName("setTextField:"), textField);
+        
+        // Set up constraints (simplified - just center the text)
+        Class NSLayoutConstraint = objc_getClass("NSLayoutConstraint");
+        if (NSLayoutConstraint) {
+            // Leading constraint
+            id leadingAnchor = ((id (*)(id, SEL))objc_msgSend)(textField, sel_registerName("leadingAnchor"));
+            id cellLeadingAnchor = ((id (*)(id, SEL))objc_msgSend)(cellView, sel_registerName("leadingAnchor"));
+            id leadingConstraint = ((id (*)(id, SEL, id, double))objc_msgSend)(
+                leadingAnchor,
+                sel_registerName("constraintEqualToAnchor:constant:"),
+                cellLeadingAnchor,
+                8.0
+            );
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(leadingConstraint, sel_registerName("setActive:"), YES);
+            
+            // Center Y constraint
+            id centerYAnchor = ((id (*)(id, SEL))objc_msgSend)(textField, sel_registerName("centerYAnchor"));
+            id cellCenterYAnchor = ((id (*)(id, SEL))objc_msgSend)(cellView, sel_registerName("centerYAnchor"));
+            id centerYConstraint = ((id (*)(id, SEL, id))objc_msgSend)(
+                centerYAnchor,
+                sel_registerName("constraintEqualToAnchor:"),
+                cellCenterYAnchor
+            );
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(centerYConstraint, sel_registerName("setActive:"), YES);
+        }
+    }
+    
+    // Set the text content
+    id textField = ((id (*)(id, SEL))objc_msgSend)(cellView, sel_registerName("textField"));
+    if (textField && item) {
+        const char* itemText = ((const char* (*)(id, SEL))objc_msgSend)(item, sel_registerName("UTF8String"));
+        if (itemText) {
+            ((void (*)(id, SEL, id))objc_msgSend)(textField, sel_registerName("setStringValue:"), item);
+        }
+    }
+    
+    return cellView;
+}
+
+static void outline_view_selection_did_change(id self, SEL _cmd, id notification) {
+    (void)self; (void)_cmd; // Suppress unused warnings
+    
+    // Get outline view from notification
+    id outlineView = ((id (*)(id, SEL))objc_msgSend)(notification, sel_registerName("object"));
+    if (!outlineView) return;
+    
+    // Get selected row
+    NSInteger selectedRow = ((NSInteger (*)(id, SEL))objc_msgSend)(outlineView, sel_registerName("selectedRow"));
+    if (selectedRow >= 0) {
+        // Get window from stored data
+        id windowValue = objc_getAssociatedObject(self, "window");
+        app_window_t* window = NULL;
+        if (windowValue) {
+            window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(windowValue, sel_registerName("pointerValue"));
+        }
+        if (window && window->config->development.debug_mode) {
+            printf("Native sidebar item selected at row: %ld\n", (long)selectedRow);
+        }
+        
+        // Handle selection
+        if (window && selectedRow < window->config->macos.sidebar.item_count) {
+            const char* action = window->config->macos.sidebar.items[selectedRow].action;
+            if (action && strlen(action) > 0) {
+                printf("Executing sidebar action: %s\n", action);
+            }
+        }
+    }
+}
+
+// Split view delegate implementation
+static BOOL split_view_can_collapse_subview(id self, SEL _cmd, id splitView, id subview) {
+    (void)self; (void)_cmd; // Suppress unused warnings
+    
+    // Allow the sidebar (first subview) to be collapsed
+    id subviews = ((id (*)(id, SEL))objc_msgSend)(splitView, sel_registerName("subviews"));
+    NSUInteger count = ((NSUInteger (*)(id, SEL))objc_msgSend)(subviews, sel_registerName("count"));
+    
+    if (count > 0) {
+        id firstSubview = ((id (*)(id, SEL, NSUInteger))objc_msgSend)(subviews, sel_registerName("objectAtIndex:"), 0);
+        return (subview == firstSubview);
+    }
+    
+    return NO;
+}
+
+static CGFloat split_view_constrain_min_coordinate(id self, SEL _cmd, id splitView, CGFloat proposedMin, NSInteger dividerIndex) {
+    (void)self; (void)_cmd; (void)splitView; (void)dividerIndex; // Suppress unused warnings
+    return fmax(proposedMin, 0.0); // Allow complete collapse to 0
+}
+
+static CGFloat split_view_constrain_max_coordinate(id self, SEL _cmd, id splitView, CGFloat proposedMax, NSInteger dividerIndex) {
+    (void)self; (void)_cmd; (void)dividerIndex; // Suppress unused warnings
+    
+    CGRect frame = ((CGRect (*)(id, SEL))objc_msgSend)(splitView, sel_registerName("frame"));
+    return fmin(proposedMax, frame.size.width / 3.0); // Maximum sidebar width (1/3 of total)
+}
+
+static BOOL split_view_should_adjust_size_of_subview(id self, SEL _cmd, id splitView, id subview) {
+    (void)self; (void)_cmd; // Suppress unused warnings
+    
+    // Don't auto-resize the sidebar when window resizes
+    id subviews = ((id (*)(id, SEL))objc_msgSend)(splitView, sel_registerName("subviews"));
+    NSUInteger count = ((NSUInteger (*)(id, SEL))objc_msgSend)(subviews, sel_registerName("count"));
+    
+    if (count > 0) {
+        id firstSubview = ((id (*)(id, SEL, NSUInteger))objc_msgSend)(subviews, sel_registerName("objectAtIndex:"), 0);
+        return (subview != firstSubview);
+    }
+    
+    return YES;
+}
+
+// Create outline view delegate/data source class
+static Class create_outline_view_delegate_class(void) {
+    static Class OutlineViewDelegateClass = nil;
+    if (OutlineViewDelegateClass == nil) {
+        OutlineViewDelegateClass = objc_allocateClassPair(objc_getClass("NSObject"), "OutlineViewDelegate", 0);
+        
+        // Add data source methods
+        class_addMethod(OutlineViewDelegateClass, sel_registerName("outlineView:numberOfChildrenOfItem:"),
+                       (IMP)outline_view_number_of_children, "l@:@@");
+        class_addMethod(OutlineViewDelegateClass, sel_registerName("outlineView:child:ofItem:"),
+                       (IMP)outline_view_child_of_item, "@@:@l@");
+        class_addMethod(OutlineViewDelegateClass, sel_registerName("outlineView:isItemExpandable:"),
+                       (IMP)outline_view_is_item_expandable, "c@:@@");
+        
+        // Add delegate methods
+        class_addMethod(OutlineViewDelegateClass, sel_registerName("outlineView:viewForTableColumn:item:"),
+                       (IMP)outline_view_view_for_table_column, "@@:@@@");
+        class_addMethod(OutlineViewDelegateClass, sel_registerName("outlineViewSelectionDidChange:"),
+                       (IMP)outline_view_selection_did_change, "v@:@");
+        
+        objc_registerClassPair(OutlineViewDelegateClass);
+    }
+    return OutlineViewDelegateClass;
+}
+
+// Create split view delegate class
+static Class create_split_view_delegate_class(void) {
+    static Class SplitViewDelegateClass = nil;
+    if (SplitViewDelegateClass == nil) {
+        SplitViewDelegateClass = objc_allocateClassPair(objc_getClass("NSObject"), "SplitViewDelegate", 0);
+        
+        // Add split view delegate methods
+        class_addMethod(SplitViewDelegateClass, sel_registerName("splitView:canCollapseSubview:"),
+                       (IMP)split_view_can_collapse_subview, "c@:@@");
+        class_addMethod(SplitViewDelegateClass, sel_registerName("splitView:constrainMinCoordinate:ofSubviewAt:"),
+                       (IMP)split_view_constrain_min_coordinate, "f@:@fi");
+        class_addMethod(SplitViewDelegateClass, sel_registerName("splitView:constrainMaxCoordinate:ofSubviewAt:"),
+                       (IMP)split_view_constrain_max_coordinate, "f@:@fi");
+        class_addMethod(SplitViewDelegateClass, sel_registerName("splitView:shouldAdjustSizeOfSubview:"),
+                       (IMP)split_view_should_adjust_size_of_subview, "c@:@@");
+        
+        objc_registerClassPair(SplitViewDelegateClass);
+    }
+    return SplitViewDelegateClass;
+}
+
+// Create toolbar delegate class
+static Class create_toolbar_delegate_class(void) {
+    static Class ToolbarDelegateClass = nil;
+    if (ToolbarDelegateClass == nil) {
+        ToolbarDelegateClass = objc_allocateClassPair(objc_getClass("NSObject"), "ToolbarDelegate", 0);
+        
+        // Add instance variable to store window pointer
+        class_addIvar(ToolbarDelegateClass, "window", sizeof(void*), log2(sizeof(void*)), "^v");
+        
+        // Add toolbar delegate methods
+        class_addMethod(ToolbarDelegateClass, sel_registerName("toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:"),
+                       (IMP)toolbar_item_for_identifier, "@@:@@c");
+        class_addMethod(ToolbarDelegateClass, sel_registerName("toolbarDefaultItemIdentifiers:"),
+                       (IMP)toolbar_default_item_identifiers, "@@:@");
+        class_addMethod(ToolbarDelegateClass, sel_registerName("toolbarAllowedItemIdentifiers:"),
+                       (IMP)toolbar_allowed_item_identifiers, "@@:@");
+        
+        objc_registerClassPair(ToolbarDelegateClass);
+    }
+    return ToolbarDelegateClass;
+}
+
+// Setup native split view with sidebar
+static void setup_native_sidebar_split_view(app_window_t* window, platform_native_window_t* native) {
+    Class NSSplitView = objc_getClass("NSSplitView");
+    Class NSScrollView = objc_getClass("NSScrollView");
+    Class NSOutlineView = objc_getClass("NSOutlineView");
+    Class NSTableColumn = objc_getClass("NSTableColumn");
+    Class NSString = objc_getClass("NSString");
+    
+    printf("Setting up native macOS sidebar with NSSplitView and NSOutlineView\n");
+    
+    // Create the main split view
+    id splitView = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSSplitView, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    // Configure split view for sidebar behavior
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(splitView, sel_registerName("setTranslatesAutoresizingMaskIntoConstraints:"), NO);
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(splitView, sel_registerName("setVertical:"), YES); // Side by side
+    ((void (*)(id, SEL, long))objc_msgSend)(splitView, sel_registerName("setDividerStyle:"), 0); // NO divider (was 1)
+    
+    // Hide the divider completely
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(splitView, sel_registerName("setArrangesAllSubviews:"), YES);
+    
+    // Create and set split view delegate
+    Class SplitViewDelegateClass = create_split_view_delegate_class();
+    id splitViewDelegate = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)SplitViewDelegateClass, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    ((void (*)(id, SEL, id))objc_msgSend)(splitView, sel_registerName("setDelegate:"), splitViewDelegate);
+    
+    // Create scroll view for the sidebar
+    id scrollView = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSScrollView, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    // Configure scroll view
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(scrollView, sel_registerName("setTranslatesAutoresizingMaskIntoConstraints:"), NO);
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(scrollView, sel_registerName("setHasVerticalScroller:"), YES);
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(scrollView, sel_registerName("setHasHorizontalScroller:"), NO);
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(scrollView, sel_registerName("setAutohidesScrollers:"), YES);
+    ((void (*)(id, SEL, long))objc_msgSend)(scrollView, sel_registerName("setBorderType:"), 0); // No border
+    
+    // Create outline view
+    id outlineView = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSOutlineView, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    // Configure outline view for native sidebar appearance
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(outlineView, sel_registerName("setTranslatesAutoresizingMaskIntoConstraints:"), NO);
+    ((void (*)(id, SEL, id))objc_msgSend)(outlineView, sel_registerName("setHeaderView:"), nil); // Hide headers
+    ((void (*)(id, SEL, long))objc_msgSend)(outlineView, sel_registerName("setSelectionHighlightStyle:"), 1); // Source list style
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(outlineView, sel_registerName("setFloatsGroupRows:"), NO);
+    
+    // Create table column
+    id columnIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        "MainColumn"
+    );
+    
+    id column = ((id (*)(id, SEL, id))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSTableColumn, sel_registerName("alloc")),
+        sel_registerName("initWithIdentifier:"),
+        columnIdentifier
+    );
+    
+    id columnTitle = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        "Sidebar"
+    );
+    ((void (*)(id, SEL, id))objc_msgSend)(column, sel_registerName("setTitle:"), columnTitle);
+    
+    // Add column to outline view
+    ((void (*)(id, SEL, id))objc_msgSend)(outlineView, sel_registerName("addTableColumn:"), column);
+    ((void (*)(id, SEL, id))objc_msgSend)(outlineView, sel_registerName("setOutlineTableColumn:"), column);
+    
+    // Create and set outline view data source/delegate
+    Class OutlineViewDelegateClass = create_outline_view_delegate_class();
+    id outlineViewDelegate = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)OutlineViewDelegateClass, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    // Store the window pointer in the delegate for access
+    Class NSValue = objc_getClass("NSValue");
+    id windowValue = ((id (*)(id, SEL, void*))objc_msgSend)(
+        (id)NSValue,
+        sel_registerName("valueWithPointer:"),
+        window
+    );
+    objc_setAssociatedObject(outlineViewDelegate, "window", windowValue, OBJC_ASSOCIATION_RETAIN);
+    
+    // Set data source and delegate
+    ((void (*)(id, SEL, id))objc_msgSend)(outlineView, sel_registerName("setDataSource:"), outlineViewDelegate);
+    ((void (*)(id, SEL, id))objc_msgSend)(outlineView, sel_registerName("setDelegate:"), outlineViewDelegate);
+    
+    // Set outline view as document view of scroll view
+    ((void (*)(id, SEL, id))objc_msgSend)(scrollView, sel_registerName("setDocumentView:"), outlineView);
+    
+    // Configure webview for split view
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(native->webview, sel_registerName("setTranslatesAutoresizingMaskIntoConstraints:"), NO);
+    
+    // Add subviews to split view in correct order (sidebar first, then webview)
+    ((void (*)(id, SEL, id))objc_msgSend)(splitView, sel_registerName("addSubview:"), scrollView);
+    ((void (*)(id, SEL, id))objc_msgSend)(splitView, sel_registerName("addSubview:"), native->webview);
+    
+    // Set split view as the window's content view
+    ((void (*)(id, SEL, id))objc_msgSend)(native->ns_window, sel_registerName("setContentView:"), splitView);
+    
+    // Configure content hugging priorities
+    Class NSView = objc_getClass("NSView");
+    if (((BOOL (*)(id, SEL, id))objc_msgSend)(scrollView, sel_registerName("isKindOfClass:"), (id)NSView)) {
+        // Sidebar should maintain its width (high hugging priority)
+        ((void (*)(id, SEL, float, long))objc_msgSend)(scrollView, sel_registerName("setContentHuggingPriority:forOrientation:"), 251.0, 0);
+    }
+    if (((BOOL (*)(id, SEL, id))objc_msgSend)(native->webview, sel_registerName("isKindOfClass:"), (id)NSView)) {
+        // WebView should expand to fill remaining space (low hugging priority)
+        ((void (*)(id, SEL, float, long))objc_msgSend)(native->webview, sel_registerName("setContentHuggingPriority:forOrientation:"), 249.0, 0);
+    }
+    
+    // Set initial sidebar width (200 points)
+    ((void (*)(id, SEL, CGFloat, NSInteger))objc_msgSend)(splitView, sel_registerName("setPosition:ofDividerAtIndex:"), 200.0, 0);
+    
+    // Store references for later use
+    native->split_view_controller = splitView; // Reusing the field but it's actually NSSplitView now
+    native->sidebar_view_controller = scrollView; // Store the sidebar's scroll view
+    
+    // Set initial visibility state
+    native->sidebar_visible = !window->config->macos.sidebar.start_collapsed;
+    
+    // Reload outline view data
+    ((void (*)(id, SEL))objc_msgSend)(outlineView, sel_registerName("reloadData"));
+    
+    // Handle initial collapsed state
+    if (window->config->macos.sidebar.start_collapsed) {
+        // Properly collapse the sidebar initially
+        ((void (*)(id, SEL, CGFloat, NSInteger))objc_msgSend)(splitView, sel_registerName("setPosition:ofDividerAtIndex:"), 0.0, 0);
+        native->sidebar_visible = false;
+        printf("Sidebar initially collapsed as configured\n");
+    }
+    
+    if (window->config->development.debug_mode) {
+        printf("Native macOS sidebar setup completed\n");
+        printf("- Using NSSplitView with NSOutlineView\n");
+        printf("- Sidebar %s, width: %s\n", native->sidebar_visible ? "visible" : "collapsed", native->sidebar_visible ? "200pt" : "0pt");
+        printf("- %d navigation items configured\n", window->config->macos.sidebar.item_count);
+        printf("- No divider line or resize handle\n");
+    }
+}
+
+// ============================================================================
+// SIDEBAR MANAGEMENT FUNCTIONS (Updated for native NSSplitView)
+// ============================================================================
+
+void platform_macos_toggle_sidebar(app_window_t* window) {
+    if (!window || !window->native_window) {
+        printf("Error: Invalid window or native window\n");
+        return;
+    }
+    
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+    
+    printf("Toggling native sidebar...\n");
+    
+    // Get the split view (stored in split_view_controller field)
+    id splitView = native->split_view_controller;
+    if (!splitView) {
+        printf("Error: No split view found\n");
+        return;
+    }
+    
+    // Check current position to determine state
+    CGFloat currentPosition = ((CGFloat (*)(id, SEL, NSInteger))objc_msgSend)(splitView, sel_registerName("positionOfDividerAtIndex:"), 0);
+    printf("Current divider position: %.1f\n", currentPosition);
+    
+    // Toggle based on current position
+    if (currentPosition <= 1.0) {
+        printf("Showing native sidebar...\n");
+        platform_macos_show_sidebar(window);
+    } else {
+        printf("Hiding native sidebar...\n");
+        platform_macos_hide_sidebar(window);
+    }
+}
+
+void platform_macos_show_sidebar(app_window_t* window) {
+    if (!window || !window->native_window) return;
+    
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+    
+    printf("Showing native sidebar...\n");
+    
+    // Get the split view
+    id splitView = native->split_view_controller;
+    if (!splitView) {
+        printf("Error: No split view found\n");
+        return;
+    }
+    
+    // Simply set the divider position without animation to avoid block syntax issues
+    ((void (*)(id, SEL, CGFloat, NSInteger))objc_msgSend)(splitView, sel_registerName("setPosition:ofDividerAtIndex:"), 200.0, 0);
+    
+    // Update state
+    native->sidebar_visible = true;
+    
+    // Send state to webview
+    platform_send_sidebar_state_to_webview(window, true);
+    
+    if (window->config->development.debug_mode) {
+        printf("Native sidebar shown successfully (position: 200pt)\n");
+    }
+}
+
+void platform_macos_hide_sidebar(app_window_t* window) {
+    if (!window || !window->native_window) return;
+    
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+    
+    printf("Hiding native sidebar...\n");
+    
+    // Get the split view
+    id splitView = native->split_view_controller;
+    if (!splitView) {
+        printf("Error: No split view found\n");
+        return;
+    }
+    
+    // Simply set the divider position to 0 to completely collapse the sidebar
+    ((void (*)(id, SEL, CGFloat, NSInteger))objc_msgSend)(splitView, sel_registerName("setPosition:ofDividerAtIndex:"), 0.0, 0);
+    
+    // Update state
+    native->sidebar_visible = false;
+    
+    // Send state to webview
+    platform_send_sidebar_state_to_webview(window, false);
+    
+    if (window->config->development.debug_mode) {
+        printf("Native sidebar hidden successfully (position: 0pt)\n");
+    }
+}
+
+void platform_handle_sidebar_action(const char* action, app_window_t* window) {
+    if (!action || !window) return;
+    
+    if (strcmp(action, "toggle") == 0) {
+        platform_macos_toggle_sidebar(window);
+    } else if (strcmp(action, "show") == 0) {
+        platform_macos_show_sidebar(window);
+    } else if (strcmp(action, "hide") == 0) {
+        platform_macos_hide_sidebar(window);
+    }
+}
+
+// Helper function to send sidebar state to webview
+static void platform_send_sidebar_state_to_webview(app_window_t* window, bool visible) {
+    if (!window || !window->native_window) return;
+    
+    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+    
+    // Create JavaScript to notify webview of sidebar state
+    char js_code[256];
+    snprintf(js_code, sizeof(js_code), 
+             "if (window.nativeSidebar) { window.nativeSidebar.onStateChange(%s); }",
+             visible ? "true" : "false");
+    
+    // Convert to NSString
+    id js_string = ((id (*)(id, SEL, const char*))objc_msgSend)((id)objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"), js_code);
+    
+    // Execute JavaScript in webview
+    ((void (*)(id, SEL, id, id))objc_msgSend)(native->webview, sel_registerName("evaluateJavaScript:completionHandler:"), js_string, nil);
+}
+
+// ============================================================================
+// PLATFORM INITIALIZATION AND WINDOW MANAGEMENT
+// ============================================================================
 
 bool platform_init(const app_configuration_t* app_config) {
     if (!app_config) return false;
@@ -65,7 +634,7 @@ bool platform_init(const app_configuration_t* app_config) {
     // Set activation policy to regular app (shows in dock)
     ((void (*)(id, SEL, long))objc_msgSend)(g_app, sel_registerName("setActivationPolicy:"), 0); // NSApplicationActivationPolicyRegular
     
-    printf("macOS platform initialized\n");
+    printf("Modern macOS platform initialized\n");
     
     // If webview is enabled, initialize the framework
     if (app_config->webview.enabled) {
@@ -104,7 +673,7 @@ void platform_cleanup(void) {
     
     // Cleanup platform resources
     g_app = nil;
-    printf("macOS platform cleaned up\n");
+    printf("Modern macOS platform cleaned up\n");
 }
 
 bool platform_create_window(app_window_t* window) {
@@ -124,9 +693,18 @@ bool platform_create_window(app_window_t* window) {
     // Store native window in app_window structure
     window->native_window = native;
     
-    // Create window style mask based on configuration
-    unsigned long style_mask = get_window_style_mask(window->config);
-    printf("Creating window with style mask: 0x%lx\n", style_mask);
+    // Create window style mask based on config
+    unsigned long style_mask = 0;
+    style_mask |= (1 << 0);  // NSWindowStyleMaskTitled
+    style_mask |= (1 << 1);  // NSWindowStyleMaskClosable
+    style_mask |= (1 << 2);  // NSWindowStyleMaskMiniaturizable
+    style_mask |= (1 << 3);  // NSWindowStyleMaskResizable
+    
+    // Add unified toolbar and full size content view for modern appearance
+    style_mask |= (1 << 15); // NSWindowStyleMaskUnifiedTitleAndToolbar
+    style_mask |= (1 << 13); // NSWindowStyleMaskFullSizeContentView
+    
+    printf("Creating modern window with style mask: 0x%lx\n", style_mask);
     
     // Create window rect
     CGRect frame = CGRectMake(0, 0, 
@@ -156,13 +734,50 @@ bool platform_create_window(app_window_t* window) {
         return false;
     }
     
-    // Set window properties
+    // Set window properties for modern appearance
     ((void (*)(id, SEL, BOOL))objc_msgSend)(ns_window, sel_registerName("setReleasedWhenClosed:"), NO);
     
+    // Create and set window delegate for proper close handling
+    Class WindowDelegateClass = create_window_delegate_class();
+    id delegate = ((id (*)(id, SEL))objc_msgSend)((id)WindowDelegateClass, sel_registerName("alloc"));
+    delegate = ((id (*)(id, SEL))objc_msgSend)(delegate, sel_registerName("init"));
+    ((void (*)(id, SEL, id))objc_msgSend)(ns_window, sel_registerName("setDelegate:"), delegate);
+    
+    // Configure title bar based on config
+    if (!window->config->macos.show_title_bar) {
+        // Hide title bar completely and make it transparent
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(ns_window, sel_registerName("setTitlebarAppearsTransparent:"), YES);
+        ((void (*)(id, SEL, long))objc_msgSend)(ns_window, sel_registerName("setTitleVisibility:"), 1); // NSWindowTitleHidden
+        
+        // Enable full-size content view and make toolbar area draggable
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(ns_window, sel_registerName("setMovableByWindowBackground:"), YES);
+        
+        // Additional settings for proper toolbar dragging
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(ns_window, sel_registerName("setMovable:"), YES);
+        
+        // Make the entire toolbar area draggable by setting the style mask properly
+        unsigned long current_mask = ((unsigned long (*)(id, SEL))objc_msgSend)(ns_window, sel_registerName("styleMask"));
+        current_mask |= (1 << 15); // Ensure NSWindowStyleMaskUnifiedTitleAndToolbar is set
+        ((void (*)(id, SEL, unsigned long))objc_msgSend)(ns_window, sel_registerName("setStyleMask:"), current_mask);
+        
+        if (window->config->development.debug_mode) {
+            printf("Title bar hidden, window draggable by background and toolbar (mask: 0x%lx)\n", current_mask);
+        }
+        } else {
+        // Show normal title bar
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(ns_window, sel_registerName("setTitlebarAppearsTransparent:"), NO);
+        ((void (*)(id, SEL, long))objc_msgSend)(ns_window, sel_registerName("setTitleVisibility:"), 0); // NSWindowTitleVisible
+        
+        if (window->config->development.debug_mode) {
+            printf("Title bar visible\n");
+        }
+    }
+    
     // Set window title
+    Class NSString = objc_getClass("NSString");
     id title = ((id (*)(id, SEL, const char*))objc_msgSend)(
-        (id)objc_getClass("NSString"),
-        sel_registerName("stringWithUTF8String:"),
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
         window->config->window.title
     );
     ((void (*)(id, SEL, id))objc_msgSend)(ns_window, sel_registerName("setTitle:"), title);
@@ -170,50 +785,13 @@ bool platform_create_window(app_window_t* window) {
     // Store window in native structure
     native->ns_window = ns_window;
     
-    printf("macOS window created successfully\n");
+    printf("Modern macOS window created successfully\n");
     return true;
 }
 
-void platform_macos_setup_toolbar(app_window_t* window) {
-    if (!window || !window->native_window) return;
-    
-    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
-    Class NSToolbar = objc_getClass("NSToolbar");
-    Class NSString = objc_getClass("NSString");
-    
-    // Create toolbar identifier
-    id identifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
-        (id)NSString,
-        sel_registerName("stringWithUTF8String:"),
-        "MainToolbar"
-    );
-    
-    // Create toolbar
-    id toolbar = ((id (*)(id, SEL))objc_msgSend)((id)NSToolbar, sel_registerName("alloc"));
-    toolbar = ((id (*)(id, SEL, id))objc_msgSend)(toolbar, sel_registerName("initWithIdentifier:"), identifier);
-    
-    native->ns_toolbar = toolbar;
-    
-    // Set toolbar on window
-    ((void (*)(id, SEL, id))objc_msgSend)(native->ns_window, sel_registerName("setToolbar:"), toolbar);
-    
-    if (window->config->development.debug_mode) {
-        printf("macOS toolbar configured\n");
-    }
-}
-
-void platform_macos_add_toolbar_item(app_window_t* window, const char* identifier, const char* title) {
-    if (!window || !window->native_window) return;
-    
-    platform_native_window_t* native = (platform_native_window_t*)window->native_window;
-    if (!native->ns_toolbar) return;
-    
-    // This is a simplified version - in a full implementation, you'd need to
-    // set up a proper NSToolbarDelegate to handle toolbar items
-    if (window->config->development.debug_mode) {
-        printf("Adding toolbar item: %s (%s)\n", identifier, title);
-    }
-}
+// ============================================================================
+// WINDOW MANAGEMENT FUNCTIONS
+// ============================================================================
 
 void platform_show_window(app_window_t* window) {
     if (!window || !window->native_window) return;
@@ -281,7 +859,7 @@ void platform_run_app(app_window_t* window) {
     platform_native_window_t* native = (platform_native_window_t*)window->native_window;
     
     if (window->config->development.debug_mode) {
-        printf("Starting macOS application event loop...\n");
+        printf("Starting modern macOS application event loop...\n");
         printf("Press Cmd+Q or close the window to quit.\n");
     }
     
@@ -330,7 +908,6 @@ void platform_handle_menu_action(const char* action) {
         printf("Saving document...\n");
     } else if (strcmp(action, "close_window") == 0) {
         printf("Closing window...\n");
-        // TODO: Close current window
     } else if (strcmp(action, "undo") == 0) {
         printf("Undoing last action...\n");
     } else if (strcmp(action, "redo") == 0) {
@@ -353,10 +930,20 @@ void platform_handle_menu_action(const char* action) {
         printf("Zooming window...\n");
     } else if (strcmp(action, "show_help") == 0) {
         printf("Showing help documentation...\n");
+    } else if (strcmp(action, "toggle_sidebar") == 0) {
+        printf("Toggling sidebar...\n");
+        // Get the global main window and toggle sidebar
+        if (g_main_window) {
+            platform_macos_toggle_sidebar(g_main_window);
+        }
     } else {
         printf("Unknown menu action: %s\n", action);
     }
 }
+
+// ============================================================================
+// MENU SYSTEM (keeping existing implementation)
+// ============================================================================
 
 // Menu action callback - this gets called when menu items are selected
 void menu_action_callback(id self, SEL _cmd, id sender) {
@@ -616,6 +1203,10 @@ void platform_setup_menubar(app_window_t* window) {
     }
 }
 
+// ============================================================================
+// WEBVIEW SETUP AND MANAGEMENT (Modern WebKit implementation)
+// ============================================================================
+
 void platform_setup_webview(app_window_t* window) {
     if (!window || !window->native_window || !window->config->webview.enabled) return;
     
@@ -716,16 +1307,15 @@ void platform_setup_webview(app_window_t* window) {
         config
     );
     
-    // Set as content view
-    ((void (*)(id, SEL, id))objc_msgSend)(
-        native->ns_window,
-        sel_registerName("setContentView:"),
-        webview
-    );
-    
     // Store WebView in native window structure
     native->webview = webview;
     native->webview_config = config;
+
+    // Setup native split view with sidebar (NEW IMPLEMENTATION)
+    setup_native_sidebar_split_view(window, native);
+    
+    // Setup modern toolbar
+    setup_modern_toolbar(window, native);
     
     // Load initial URL if available
     const char* url = get_webview_url(&window->config->webview.framework);
@@ -734,7 +1324,7 @@ void platform_setup_webview(app_window_t* window) {
     }
     
     if (window->config->development.debug_mode) {
-        printf("WebView initialized successfully\n");
+        printf("Native WebView with NSSplitView and NSOutlineView sidebar initialized successfully\n");
     }
 }
 
@@ -888,7 +1478,9 @@ void platform_run_event_loop(void) {
     ((void (*)(id, SEL))objc_msgSend)(g_app, sel_registerName("run"));
 }
 
-// Script Message Handler Implementation
+// ============================================================================
+// SCRIPT MESSAGE HANDLER IMPLEMENTATION
+// ============================================================================
 
 // Structure to hold window reference for message handler
 typedef struct {
@@ -898,6 +1490,9 @@ typedef struct {
 
 // Message handler callback function
 void bridge_message_handler_callback(id self, SEL _cmd, id userContentController, id message) {
+    (void)userContentController;  // Suppress unused parameter warning
+    (void)_cmd;  // Suppress unused parameter warning
+    
     // Get the window reference from the handler structure
     BridgeMessageHandler* handler = (BridgeMessageHandler*)self;
     app_window_t* window = handler->window;
@@ -930,7 +1525,7 @@ void bridge_message_handler_callback(id self, SEL _cmd, id userContentController
 }
 
 // Create script message handler
-id create_script_message_handler(app_window_t* window) {
+static id create_script_message_handler(app_window_t* window) {
     // Create a new class for the message handler
     Class handlerClass = objc_allocateClassPair(objc_getClass("NSObject"), "BridgeMessageHandler", sizeof(BridgeMessageHandler) - sizeof(Class));
     if (!handlerClass) {
@@ -962,6 +1557,325 @@ id create_script_message_handler(app_window_t* window) {
     }
     
     return handler;
+}
+
+// ============================================================================
+// WINDOW DELEGATE IMPLEMENTATION
+// ============================================================================
+
+// Window delegate callback for window close
+static BOOL window_should_close_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; (void)sender; // Suppress unused parameter warnings
+    
+    printf("Window close requested - cleaning up and terminating application\n");
+    
+    // Stop dev server first to prevent hanging processes
+    stop_dev_server();
+    
+    // Clean up bridge system
+    bridge_cleanup();
+    
+    // Terminate the application when window is closed
+    if (g_app) {
+        // Use performSelector to terminate on next run loop cycle
+        ((void (*)(id, SEL, SEL, id, double))objc_msgSend)(
+            g_app, 
+            sel_registerName("performSelector:withObject:afterDelay:"),
+            sel_registerName("terminate:"),
+            g_app,
+            0.1
+        );
+    }
+    
+    return YES; // Allow window to close
+}
+
+// Create window delegate class
+static Class create_window_delegate_class(void) {
+    static Class WindowDelegateClass = nil;
+    if (WindowDelegateClass == nil) {
+        WindowDelegateClass = objc_allocateClassPair(objc_getClass("NSObject"), "WindowDelegate", 0);
+        
+        // Add window delegate method
+        class_addMethod(WindowDelegateClass, sel_registerName("windowShouldClose:"),
+                       (IMP)window_should_close_callback, "c@:@");
+        
+        objc_registerClassPair(WindowDelegateClass);
+    }
+    return WindowDelegateClass;
+}
+
+// Sidebar toggle callback
+static void toolbar_sidebar_toggle_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; // Suppress unused parameter warnings
+    
+    printf("Toolbar sidebar toggle button clicked\n");
+    
+    // Get the window from the sender's represented object
+    id represented_object = ((id (*)(id, SEL))objc_msgSend)(sender, sel_registerName("representedObject"));
+    if (represented_object) {
+        app_window_t* window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(represented_object, sel_registerName("pointerValue"));
+        if (window) {
+            printf("Found window pointer, calling sidebar toggle\n");
+            platform_macos_toggle_sidebar(window);
+        } else {
+            printf("Error: Window pointer is null\n");
+        }
+    } else {
+        printf("Error: No represented object found on button\n");
+    }
+}
+
+// ============================================================================
+// MODERN TOOLBAR SETUP
+// ============================================================================
+
+static void setup_modern_toolbar(app_window_t* window, platform_native_window_t* native) {
+    if (!window->config->macos.toolbar.enabled) {
+        if (window->config->development.debug_mode) {
+            printf("Toolbar disabled in configuration\n");
+        }
+        return;
+    }
+    
+    Class NSToolbar = objc_getClass("NSToolbar");
+    Class NSString = objc_getClass("NSString");
+    
+    if (!NSToolbar) {
+        printf("NSToolbar class not available\n");
+        return;
+    }
+    
+    printf("Setting up modern macOS toolbar\n");
+    
+    // Create toolbar identifier
+    id toolbarIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        "MainToolbar"
+    );
+    
+    // Create toolbar
+    id toolbar = ((id (*)(id, SEL))objc_msgSend)((id)NSToolbar, sel_registerName("alloc"));
+    toolbar = ((id (*)(id, SEL, id))objc_msgSend)(
+        toolbar,
+        sel_registerName("initWithIdentifier:"),
+        toolbarIdentifier
+    );
+    
+    // Configure toolbar
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(toolbar, sel_registerName("setAllowsUserCustomization:"), NO);
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(toolbar, sel_registerName("setAutosavesConfiguration:"), NO);
+    ((void (*)(id, SEL, long))objc_msgSend)(toolbar, sel_registerName("setDisplayMode:"), 0); // NSToolbarDisplayModeDefault
+    
+    // Create and set toolbar delegate
+    Class ToolbarDelegateClass = create_toolbar_delegate_class();
+    id toolbarDelegate = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)ToolbarDelegateClass, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    // Store window pointer in delegate
+    object_setInstanceVariable(toolbarDelegate, "window", window);
+    
+    // Set delegate
+    ((void (*)(id, SEL, id))objc_msgSend)(toolbar, sel_registerName("setDelegate:"), toolbarDelegate);
+    
+    // Set toolbar on window
+    ((void (*)(id, SEL, id))objc_msgSend)(native->ns_window, sel_registerName("setToolbar:"), toolbar);
+    
+    // Store toolbar reference
+    native->toolbar = toolbar;
+    
+    if (window->config->development.debug_mode) {
+        printf("Modern macOS toolbar setup completed\n");
+    }
+}
+
+// ============================================================================
+// TOOLBAR DELEGATE CLASS
+// ============================================================================
+
+// Create toolbar item for identifier
+static id toolbar_item_for_identifier(id self, SEL _cmd, id toolbar, id identifier, BOOL willBeInserted) {
+    (void)toolbar; (void)willBeInserted; // Suppress unused parameter warnings
+    
+    // Get window from delegate
+    app_window_t* window;
+    object_getInstanceVariable(self, "window", (void**)&window);
+    
+    if (!window) return nil;
+    
+    Class NSString = objc_getClass("NSString");
+    Class NSToolbarItem = objc_getClass("NSToolbarItem");
+    Class NSButton = objc_getClass("NSButton");
+    Class NSImage = objc_getClass("NSImage");
+    
+    // Get identifier string
+    const char* identifierStr = ((const char* (*)(id, SEL))objc_msgSend)(identifier, sel_registerName("UTF8String"));
+    
+    if (strcmp(identifierStr, "SidebarToggle") == 0) {
+        // Create sidebar toggle toolbar item
+        id toolbarItem = ((id (*)(id, SEL))objc_msgSend)((id)NSToolbarItem, sel_registerName("alloc"));
+        toolbarItem = ((id (*)(id, SEL, id))objc_msgSend)(toolbarItem, sel_registerName("initWithItemIdentifier:"), identifier);
+        
+        // Create button with proper system size
+        id button = ((id (*)(id, SEL))objc_msgSend)((id)NSButton, sel_registerName("alloc"));
+        button = ((id (*)(id, SEL, CGRect))objc_msgSend)(button, sel_registerName("initWithFrame:"), CGRectMake(0, 0, 28, 28));
+        
+        // Set button type and style
+        ((void (*)(id, SEL, long))objc_msgSend)(button, sel_registerName("setButtonType:"), 0); // NSMomentaryPushInButton
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(button, sel_registerName("setBordered:"), NO);
+        ((void (*)(id, SEL, long))objc_msgSend)(button, sel_registerName("setBezelStyle:"), 15); // NSBezelStyleAccessoryBar
+        
+        // Use SF Symbol for sidebar icon with proper configuration
+        id sidebarIcon = nil;
+        Class NSImageSymbolConfiguration = objc_getClass("NSImageSymbolConfiguration");
+        if (NSImageSymbolConfiguration) {
+            // Create symbol configuration for medium size
+            id symbolConfig = ((id (*)(id, SEL, long))objc_msgSend)(
+                (id)NSImageSymbolConfiguration,
+                sel_registerName("configurationWithScale:"),
+                2  // NSImageSymbolScaleMedium
+            );
+            
+            // Create the sidebar.left SF Symbol
+            id symbolName = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                (id)NSString,
+                sel_registerName("stringWithUTF8String:"),
+                "sidebar.left"
+            );
+            
+            sidebarIcon = ((id (*)(id, SEL, id, id))objc_msgSend)(
+                (id)NSImage,
+                sel_registerName("imageWithSystemSymbolName:accessibilityDescription:"),
+                symbolName,
+                nil
+            );
+            
+            if (sidebarIcon) {
+                // Apply the symbol configuration
+                sidebarIcon = ((id (*)(id, SEL, id))objc_msgSend)(
+                    sidebarIcon,
+                    sel_registerName("imageWithSymbolConfiguration:"),
+                    symbolConfig
+                );
+            }
+        }
+        
+        // Fallback to text if SF Symbol not available
+        if (!sidebarIcon) {
+            id buttonTitle = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                (id)NSString,
+                sel_registerName("stringWithUTF8String:"),
+                "☰"
+            );
+            ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setTitle:"), buttonTitle);
+        } else {
+            ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setImage:"), sidebarIcon);
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(button, sel_registerName("setImageHugsTitle:"), YES);
+        }
+        
+        // Store window pointer in button's represented object
+        Class NSValue = objc_getClass("NSValue");
+        id windowPtr = ((id (*)(id, SEL, void*))objc_msgSend)((id)NSValue, sel_registerName("valueWithPointer:"), window);
+        ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setRepresentedObject:"), windowPtr);
+        
+        // Set button action - use the button itself as target and a selector we'll add
+        ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setTarget:"), button);
+        ((void (*)(id, SEL, SEL))objc_msgSend)(button, sel_registerName("setAction:"), sel_registerName("toggleSidebar:"));
+        
+        // Add the action method to the button's class dynamically
+        Class buttonClass = object_getClass(button);
+        if (!class_getInstanceMethod(buttonClass, sel_registerName("toggleSidebar:"))) {
+            class_addMethod(buttonClass, sel_registerName("toggleSidebar:"), (IMP)toolbar_sidebar_toggle_callback, "v@:@");
+            
+            if (window->config->development.debug_mode) {
+                printf("Added toggleSidebar: method to button class\n");
+            }
+        }
+        
+        // Set toolbar item properties
+        id tooltip = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            "Toggle Sidebar"
+        );
+        ((void (*)(id, SEL, id))objc_msgSend)(toolbarItem, sel_registerName("setToolTip:"), tooltip);
+        
+        // Set button as toolbar item view
+        ((void (*)(id, SEL, id))objc_msgSend)(toolbarItem, sel_registerName("setView:"), button);
+        
+        // Set proper size constraints for system toolbar
+        CGSize minSize = CGSizeMake(28, 28);
+        CGSize maxSize = CGSizeMake(28, 28);
+        ((void (*)(id, SEL, CGSize))objc_msgSend)(toolbarItem, sel_registerName("setMinSize:"), minSize);
+        ((void (*)(id, SEL, CGSize))objc_msgSend)(toolbarItem, sel_registerName("setMaxSize:"), maxSize);
+        
+        if (window->config->development.debug_mode) {
+            printf("Sidebar toggle toolbar item created with action\n");
+        }
+        
+        return toolbarItem;
+    }
+    
+    return nil;
+}
+
+// Default toolbar item identifiers
+static id toolbar_default_item_identifiers(id self, SEL _cmd, id toolbar) {
+    (void)self; (void)_cmd; (void)toolbar; // Suppress unused warnings
+    
+    Class NSArray = objc_getClass("NSArray");
+    Class NSString = objc_getClass("NSString");
+    
+    // Create array of default toolbar item identifiers
+    id sidebarToggleIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        "SidebarToggle"
+    );
+    
+    id identifiers = ((id (*)(id, SEL, id, ...))objc_msgSend)(
+        (id)NSArray,
+        sel_registerName("arrayWithObjects:"),
+        sidebarToggleIdentifier,
+        nil
+    );
+    
+    return identifiers;
+}
+
+// Allowed toolbar item identifiers
+static id toolbar_allowed_item_identifiers(id self, SEL _cmd, id toolbar) {
+    (void)self; (void)_cmd; (void)toolbar; // Suppress unused warnings
+    
+    Class NSArray = objc_getClass("NSArray");
+    Class NSString = objc_getClass("NSString");
+    
+    // Create array of allowed toolbar item identifiers
+    id sidebarToggleIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        "SidebarToggle"
+    );
+    
+    // Add standard toolbar items
+    id flexibleSpaceIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        "NSToolbarFlexibleSpaceItem"
+    );
+    
+    id identifiers = ((id (*)(id, SEL, id, ...))objc_msgSend)(
+        (id)NSArray,
+        sel_registerName("arrayWithObjects:"),
+        sidebarToggleIdentifier,
+        flexibleSpaceIdentifier,
+        nil
+    );
+    
+    return identifiers;
 }
 
 #endif // __APPLE__ 

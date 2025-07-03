@@ -6,7 +6,7 @@
 #include "bridge.h"
 
 // Global window reference for signal handling
-static app_window_t* g_main_window = NULL;
+app_window_t* g_main_window = NULL;
 
 static void cleanup(void) {
     if (g_main_window) {
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
     
     platform_show_window(g_main_window);
     
-    // Setup webview if enabled
+    // Setup webview if enabled (includes modern toolbar and sidebar setup)
     if (app_config->webview.enabled) {
         platform_setup_webview(g_main_window);
         
@@ -92,7 +92,7 @@ int main(int argc, char* argv[]) {
         }
         
         if (app_config->development.debug_mode) {
-            printf("WebView setup completed\n");
+            printf("Modern WebView with NSSplitViewController and NSToolbar setup completed\n");
         }
     }
     
@@ -104,13 +104,9 @@ int main(int argc, char* argv[]) {
         }
     }
     
-    // Add some demo toolbar items if toolbar is enabled
-    #ifdef PLATFORM_MACOS
-    if (app_config->macos.toolbar.enabled) {
-        platform_macos_add_toolbar_item(g_main_window, "refresh", "Refresh");
-        platform_macos_add_toolbar_item(g_main_window, "settings", "Settings");
+    if (app_config->development.debug_mode) {
+        printf("Modern macOS app with NSSplitViewController and NSToolbar initialized\n");
     }
-    #endif
     
     printf("Starting application event loop...\n");
     printf("Close the window or press Ctrl+C to quit.\n\n");

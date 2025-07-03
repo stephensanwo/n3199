@@ -5,6 +5,37 @@
 #include "config.h"
 #include "webview_framework.h"
 
+#ifdef __APPLE__
+// macOS-specific includes and type definitions
+#include <CoreGraphics/CoreGraphics.h>
+#include <objc/objc.h>
+
+// Type definitions for Objective-C types (using system definitions)
+typedef long NSInteger;
+typedef unsigned long NSUInteger;
+
+// Platform-specific window structure for macOS using modern APIs
+typedef struct {
+    id ns_app;
+    id ns_window;
+    id window_controller;           // NSWindowController
+    id split_view_controller;       // NSSplitViewController (reused for NSSplitView)
+    id sidebar_view_controller;     // NSViewController for sidebar (reused for scroll view)
+    id main_view_controller;        // NSViewController for webview
+    id webview;                     // WKWebView
+    id webview_config;             // WKWebViewConfiguration
+    id script_handler;             // WKScriptMessageHandler
+    id toolbar;                    // NSToolbar
+    bool sidebar_visible;
+} platform_native_window_t;
+#else
+// Platform-agnostic fallback
+typedef struct {
+    void* native_handle;
+    bool sidebar_visible;
+} platform_native_window_t;
+#endif
+
 // Forward declarations for platform-specific window handles
 typedef void* platform_window_handle_t;
 typedef void* platform_webview_handle_t;
@@ -16,8 +47,11 @@ typedef struct {
     platform_webview_handle_t webview;
 } app_window_t;
 
+// Global window reference
+extern app_window_t* g_main_window;
+
 // Platform initialization and cleanup
-bool platform_init(const app_configuration_t* config);
+bool platform_init(const app_configuration_t* app_config);
 void platform_cleanup(void);
 
 // Window management
@@ -41,11 +75,11 @@ void platform_run_event_loop(void);
 // Global configuration
 extern app_configuration_t* app_config;
 
-// Toolbar management (platform-specific)
-#ifdef PLATFORM_MACOS
-void platform_macos_setup_toolbar(app_window_t* window);
-void platform_macos_add_toolbar_item(app_window_t* window, const char* identifier, const char* title);
-#endif
+// macOS-specific modern platform functions
+void platform_macos_toggle_sidebar(app_window_t* window);
+void platform_macos_show_sidebar(app_window_t* window);
+void platform_macos_hide_sidebar(app_window_t* window);
+void platform_handle_sidebar_action(const char* action, app_window_t* window);
 
 #ifdef PLATFORM_WINDOWS
 void platform_windows_setup_toolbar(app_window_t* window);
