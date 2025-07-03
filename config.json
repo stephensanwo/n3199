@@ -162,7 +162,68 @@
   "macos": {
     "toolbar": {
       "enabled": true,
-      "show_toggle_button": true
+      "show_toggle_button": true,
+      "left": {
+        "buttons": [
+          {
+            "name": "Back",
+            "icon": "chevron.left",
+            "action": "toolbar_back_callback",
+            "tooltip": "Go Back",
+            "enabled": true
+          },
+          {
+            "name": "Forward",
+            "icon": "chevron.right",
+            "action": "toolbar_forward_callback",
+            "tooltip": "Go Forward",
+            "enabled": true
+          }
+        ]
+      },
+      "middle": {
+        "buttons": [
+          {
+            "name": "Refresh",
+            "icon": "arrow.clockwise",
+            "action": "toolbar_refresh_callback",
+            "tooltip": "Refresh",
+            "enabled": true
+          },
+          {
+            "name": "Star",
+            "icon": "star",
+            "action": "toolbar_star_callback",
+            "tooltip": "Add to Favorites",
+            "enabled": true
+          }
+        ]
+      },
+      "right": {
+        "buttons": [
+          {
+            "name": "Search",
+            "icon": "magnifyingglass",
+            "action": "toolbar_search_callback",
+            "tooltip": "Search",
+            "enabled": true
+          },
+          {
+            "name": "Settings",
+            "icon": "gear",
+            "action": "toolbar_settings_callback",
+            "tooltip": "Settings",
+            "enabled": true
+          },
+          {
+            "name": "Share",
+            "icon": "square.and.arrow.up",
+            "action": "toolbar_share_callback",
+            "tooltip": "Share",
+            "enabled": true
+          }
+        ]
+      }
     },
     "show_title_bar": false,
     "sidebar": {

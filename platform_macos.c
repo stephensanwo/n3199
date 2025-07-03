@@ -48,10 +48,25 @@ static CGFloat split_view_constrain_max_coordinate(id self, SEL _cmd, id splitVi
 static BOOL split_view_should_adjust_size_of_subview(id self, SEL _cmd, id splitView, id subview);
 
 // Toolbar delegate methods
-static id toolbar_item_for_identifier(id self, SEL _cmd, id toolbar, id identifier, BOOL willBeInserted);
+static id toolbar_item_for_identifier(id self, SEL _cmd, id toolbar, id itemIdentifier);
 static id toolbar_default_item_identifiers(id self, SEL _cmd, id toolbar);
 static id toolbar_allowed_item_identifiers(id self, SEL _cmd, id toolbar);
 static Class create_toolbar_delegate_class(void);
+
+// Toolbar helper functions
+static id create_toolbar_button_with_symbol(const char* symbolName, const char* action_name, const char* tooltip, app_window_t* window);
+static id create_toolbar_button_from_config(const toolbar_button_config_t* config, app_window_t* window);
+
+// Toolbar callback functions
+static void toolbar_sidebar_toggle_callback(id self, SEL _cmd, id sender);
+static void toolbar_back_callback(id self, SEL _cmd, id sender);
+static void toolbar_forward_callback(id self, SEL _cmd, id sender);
+static void toolbar_refresh_callback(id self, SEL _cmd, id sender);
+static void toolbar_home_callback(id self, SEL _cmd, id sender);
+static void toolbar_settings_callback(id self, SEL _cmd, id sender);
+static void toolbar_search_callback(id self, SEL _cmd, id sender);
+static void toolbar_star_callback(id self, SEL _cmd, id sender);
+static void toolbar_share_callback(id self, SEL _cmd, id sender);
 
 // Outline view data source implementation
 static NSInteger outline_view_number_of_children(id self, SEL _cmd, id outlineView, id item) {
@@ -1626,6 +1641,185 @@ static void toolbar_sidebar_toggle_callback(id self, SEL _cmd, id sender) {
     }
 }
 
+// Back button callback
+static void toolbar_back_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; // Suppress unused parameter warnings
+    
+    printf("Toolbar back button clicked\n");
+    
+    // Get the window from the sender's represented object
+    id represented_object = ((id (*)(id, SEL))objc_msgSend)(sender, sel_registerName("representedObject"));
+    if (represented_object) {
+        app_window_t* window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(represented_object, sel_registerName("pointerValue"));
+        if (window && window->native_window) {
+            platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+            if (native->webview) {
+                // Go back in webview
+                ((void (*)(id, SEL))objc_msgSend)(native->webview, sel_registerName("goBack"));
+                printf("WebView navigated back\n");
+            }
+        }
+    }
+}
+
+// Forward button callback
+static void toolbar_forward_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; // Suppress unused parameter warnings
+    
+    printf("Toolbar forward button clicked\n");
+    
+    // Get the window from the sender's represented object
+    id represented_object = ((id (*)(id, SEL))objc_msgSend)(sender, sel_registerName("representedObject"));
+    if (represented_object) {
+        app_window_t* window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(represented_object, sel_registerName("pointerValue"));
+        if (window && window->native_window) {
+            platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+            if (native->webview) {
+                // Go forward in webview
+                ((void (*)(id, SEL))objc_msgSend)(native->webview, sel_registerName("goForward"));
+                printf("WebView navigated forward\n");
+            }
+        }
+    }
+}
+
+// Refresh button callback
+static void toolbar_refresh_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; // Suppress unused parameter warnings
+    
+    printf("Toolbar refresh button clicked\n");
+    
+    // Get the window from the sender's represented object
+    id represented_object = ((id (*)(id, SEL))objc_msgSend)(sender, sel_registerName("representedObject"));
+    if (represented_object) {
+        app_window_t* window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(represented_object, sel_registerName("pointerValue"));
+        if (window && window->native_window) {
+            platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+            if (native->webview) {
+                // Reload the webview
+                ((void (*)(id, SEL))objc_msgSend)(native->webview, sel_registerName("reload"));
+                printf("WebView refreshed\n");
+            }
+        }
+    }
+}
+
+// Home button callback
+static void toolbar_home_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; // Suppress unused parameter warnings
+    
+    printf("Toolbar home button clicked\n");
+    
+    // Get the window from the sender's represented object
+    id represented_object = ((id (*)(id, SEL))objc_msgSend)(sender, sel_registerName("representedObject"));
+    if (represented_object) {
+        app_window_t* window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(represented_object, sel_registerName("pointerValue"));
+        if (window && window->native_window) {
+            platform_native_window_t* native = (platform_native_window_t*)window->native_window;
+            if (native->webview) {
+                // Navigate to home URL
+                const char* url = get_webview_url(&window->config->webview.framework);
+                if (url && strlen(url) > 0) {
+                    platform_webview_load_url(window, url);
+                    printf("Navigated to home: %s\n", url);
+                }
+            }
+        }
+    }
+}
+
+// Settings button callback
+static void toolbar_settings_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; // Suppress unused parameter warnings
+    
+    printf("Toolbar settings button clicked\n");
+    
+    // Get the window from the sender's represented object
+    id represented_object = ((id (*)(id, SEL))objc_msgSend)(sender, sel_registerName("representedObject"));
+    if (represented_object) {
+        app_window_t* window = (app_window_t*)((void* (*)(id, SEL))objc_msgSend)(represented_object, sel_registerName("pointerValue"));
+        if (window) {
+            // Execute JavaScript to trigger settings in the webview
+            const char* settingsJS = "if (window.showSettings) { window.showSettings(); } else { console.log('Settings function not available'); }";
+            platform_webview_evaluate_javascript(window, settingsJS);
+            printf("Settings triggered in webview\n");
+        }
+    }
+}
+
+// Search button callback
+static void toolbar_search_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; (void)sender; // Suppress unused warnings
+    
+    printf("Search button clicked\n");
+    
+    // Get the window from the global variable or find it another way
+    extern app_window_t* g_main_window;
+    app_window_t* window = g_main_window;
+    
+    if (window && window->webview) {
+        platform_webview_evaluate_javascript(window, "window.bridge?.onSearchToggle?.()");
+    }
+}
+
+static void toolbar_star_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; (void)sender; // Suppress unused warnings
+    
+    printf("Star button clicked\n");
+    
+    // Get the window from the global variable or find it another way
+    extern app_window_t* g_main_window;
+    app_window_t* window = g_main_window;
+    
+    if (window && window->webview) {
+        platform_webview_evaluate_javascript(window, "window.bridge?.onToggleFavorites?.()");
+    }
+}
+
+static void toolbar_share_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; (void)sender; // Suppress unused warnings
+    
+    printf("Share button clicked\n");
+    
+    // Get the window from the global variable or find it another way
+    extern app_window_t* g_main_window;
+    app_window_t* window = g_main_window;
+    
+    if (window && window->webview) {
+        platform_webview_evaluate_javascript(window, "window.bridge?.onShowShareOptions?.()");
+    }
+}
+
+// Dynamic callback registry for toolbar buttons
+typedef struct {
+    char action_name[64];
+    void (*callback)(id, SEL, id);
+} toolbar_callback_entry_t;
+
+// Registry of all available toolbar callbacks
+static toolbar_callback_entry_t toolbar_callback_registry[] = {
+    {"toolbar_back_callback", toolbar_back_callback},
+    {"toolbar_forward_callback", toolbar_forward_callback},
+    {"toolbar_refresh_callback", toolbar_refresh_callback},
+    {"toolbar_star_callback", toolbar_star_callback},
+    {"toolbar_search_callback", toolbar_search_callback},
+    {"toolbar_settings_callback", toolbar_settings_callback},
+    {"toolbar_share_callback", toolbar_share_callback},
+    {"toolbar_home_callback", toolbar_home_callback},
+    {"toolbar_sidebar_toggle_callback", toolbar_sidebar_toggle_callback},
+    {"", NULL} // Sentinel to mark end of array
+};
+
+// Function to find callback by action name
+static void (*find_toolbar_callback(const char* action_name))(id, SEL, id) {
+    for (int i = 0; strlen(toolbar_callback_registry[i].action_name) > 0; i++) {
+        if (strcmp(toolbar_callback_registry[i].action_name, action_name) == 0) {
+            return toolbar_callback_registry[i].callback;
+        }
+    }
+    return NULL;
+}
+
 // ============================================================================
 // MODERN TOOLBAR SETUP
 // ============================================================================
@@ -1640,225 +1834,343 @@ static void setup_modern_toolbar(app_window_t* window, platform_native_window_t*
     
     Class NSToolbar = objc_getClass("NSToolbar");
     Class NSString = objc_getClass("NSString");
+    Class NSTitlebarAccessoryViewController = objc_getClass("NSTitlebarAccessoryViewController");
+    Class NSButton = objc_getClass("NSButton");
+    Class NSImage = objc_getClass("NSImage");
+    Class NSValue = objc_getClass("NSValue");
     
     if (!NSToolbar) {
         printf("NSToolbar class not available\n");
         return;
     }
     
-    printf("Setting up modern macOS toolbar\n");
+    printf("Setting up modern macOS toolbar with NSToolbar and sidebar toggle accessory\n");
     
-    // Create toolbar identifier
+    // ============================================================================
+    // SIDEBAR TOGGLE ACCESSORY (Positioned outside main toolbar like native apps)
+    // ============================================================================
+    
+    if (NSTitlebarAccessoryViewController) {
+        // Create SF Symbol for sidebar first
+        id symbolString = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            "sidebar.left"
+        );
+        
+        id sidebarIcon = nil;
+        
+        // Try to create system symbol first
+        if (NSImage) {
+            sidebarIcon = ((id (*)(id, SEL, id, id))objc_msgSend)(
+                (id)NSImage,
+                sel_registerName("imageWithSystemSymbolName:accessibilityDescription:"),
+                symbolString,
+                nil
+            );
+        }
+        
+        if (!sidebarIcon) {
+            // Fallback to system image
+            sidebarIcon = ((id (*)(id, SEL, id))objc_msgSend)(
+                (id)NSImage,
+                sel_registerName("imageNamed:"),
+                symbolString
+            );
+        }
+        
+        if (sidebarIcon) {
+            // Set proper icon size for sidebar button
+            CGSize iconSize = CGSizeMake(20, 20);
+            ((void (*)(id, SEL, CGSize))objc_msgSend)(sidebarIcon, sel_registerName("setSize:"), iconSize);
+        }
+        
+        // Create native NSButton using the proper initializer: NSButton(image:target:action:)
+        // This is equivalent to [NSButton buttonWithImage:sidebarIcon target:self action:@selector(sidebarToggleAction:)]
+        id sidebarButton = ((id (*)(id, SEL, id, id, SEL))objc_msgSend)(
+            (id)NSButton,
+            sel_registerName("buttonWithImage:target:action:"),
+            sidebarIcon,
+            nil,  // target will be set later
+            sel_registerName("sidebarToggleAction:")
+        );
+        
+        if (sidebarButton) {
+            // Configure the native button for toolbar use (same as toolbar buttons)
+            ((void (*)(id, SEL, long))objc_msgSend)(sidebarButton, sel_registerName("setButtonType:"), 7); // NSMomentaryChangeButton for proper hover behavior
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(sidebarButton, sel_registerName("setBordered:"), NO); // No border by default
+            ((void (*)(id, SEL, long))objc_msgSend)(sidebarButton, sel_registerName("setBezelStyle:"), 4); // NSBezelStyleRegularSquare for clean look
+            
+            // Enable hover highlighting using NSButtonCell methods
+            id buttonCell = ((id (*)(id, SEL))objc_msgSend)(sidebarButton, sel_registerName("cell"));
+            if (buttonCell) {
+                ((void (*)(id, SEL, long))objc_msgSend)(buttonCell, sel_registerName("setHighlightsBy:"), 1); // NSContentsCellMask - content highlighting
+                ((void (*)(id, SEL, long))objc_msgSend)(buttonCell, sel_registerName("setShowsStateBy:"), 0); // NSNoCellMask - no state indication by default
+            }
+            
+            // Configure for toolbar appearance - transparent by default, subtle highlight on hover
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(sidebarButton, sel_registerName("setTransparent:"), NO);
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(sidebarButton, sel_registerName("setShowsBorderOnlyWhileMouseInside:"), YES);
+            
+            // Set proper button size (same as toolbar buttons)
+            CGRect buttonFrame = CGRectMake(0, 0, 24, 24);
+            ((void (*)(id, SEL, CGRect))objc_msgSend)(sidebarButton, sel_registerName("setFrame:"), buttonFrame);
+            
+            // Set target to the button itself for action callbacks
+            ((void (*)(id, SEL, id))objc_msgSend)(sidebarButton, sel_registerName("setTarget:"), sidebarButton);
+            
+            // Store window pointer for action callbacks
+            id windowValue = ((id (*)(id, SEL, void*))objc_msgSend)(
+                (id)NSValue,
+                sel_registerName("valueWithPointer:"),
+                window
+            );
+            ((void (*)(id, SEL, id))objc_msgSend)(sidebarButton, sel_registerName("setRepresentedObject:"), windowValue);
+            
+            // Add action method to button class dynamically
+            Class buttonClass = object_getClass(sidebarButton);
+            class_addMethod(buttonClass, sel_registerName("sidebarToggleAction:"), (IMP)toolbar_sidebar_toggle_callback, "v@:@");
+            
+            // Set tooltip for sidebar button
+            id tooltipStr = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                (id)NSString,
+                sel_registerName("stringWithUTF8String:"),
+                "Toggle Sidebar"
+            );
+            ((void (*)(id, SEL, id))objc_msgSend)(sidebarButton, sel_registerName("setToolTip:"), tooltipStr);
+        }
+        
+        // Create titlebar accessory view controller
+        id accessoryViewController = ((id (*)(id, SEL))objc_msgSend)(
+            ((id (*)(id, SEL))objc_msgSend)((id)NSTitlebarAccessoryViewController, sel_registerName("alloc")),
+            sel_registerName("init")
+        );
+        
+        // Set the button as the view
+        ((void (*)(id, SEL, id))objc_msgSend)(accessoryViewController, sel_registerName("setView:"), sidebarButton);
+        
+        // Position it on the left side (leading)
+        ((void (*)(id, SEL, long))objc_msgSend)(accessoryViewController, sel_registerName("setLayoutAttribute:"), 5); // NSLayoutAttributeLeading
+        
+        // Add to window
+        ((void (*)(id, SEL, id))objc_msgSend)(native->ns_window, sel_registerName("addTitlebarAccessoryViewController:"), accessoryViewController);
+        
+        // Store reference
+        native->sidebar_accessory = accessoryViewController;
+        
+        if (window->config->development.debug_mode) {
+            printf("Sidebar toggle accessory created and positioned\n");
+        }
+    }
+    
+    // ============================================================================
+    // MAIN TOOLBAR (Three groups: left navigation, middle flexible space, right tools)
+    // ============================================================================
+    
+    // Create toolbar with identifier
     id toolbarIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
         (id)NSString,
         sel_registerName("stringWithUTF8String:"),
         "MainToolbar"
     );
     
-    // Create toolbar
-    id toolbar = ((id (*)(id, SEL))objc_msgSend)((id)NSToolbar, sel_registerName("alloc"));
-    toolbar = ((id (*)(id, SEL, id))objc_msgSend)(
-        toolbar,
+    id toolbar = ((id (*)(id, SEL, id))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSToolbar, sel_registerName("alloc")),
         sel_registerName("initWithIdentifier:"),
         toolbarIdentifier
     );
     
-    // Configure toolbar
-    ((void (*)(id, SEL, BOOL))objc_msgSend)(toolbar, sel_registerName("setAllowsUserCustomization:"), NO);
-    ((void (*)(id, SEL, BOOL))objc_msgSend)(toolbar, sel_registerName("setAutosavesConfiguration:"), NO);
-    ((void (*)(id, SEL, long))objc_msgSend)(toolbar, sel_registerName("setDisplayMode:"), 0); // NSToolbarDisplayModeDefault
-    
     // Create and set toolbar delegate
     Class ToolbarDelegateClass = create_toolbar_delegate_class();
-    id toolbarDelegate = ((id (*)(id, SEL))objc_msgSend)(
+    id delegate = ((id (*)(id, SEL))objc_msgSend)(
         ((id (*)(id, SEL))objc_msgSend)((id)ToolbarDelegateClass, sel_registerName("alloc")),
         sel_registerName("init")
     );
     
     // Store window pointer in delegate
-    object_setInstanceVariable(toolbarDelegate, "window", window);
+    object_setInstanceVariable(delegate, "window", window);
     
     // Set delegate
-    ((void (*)(id, SEL, id))objc_msgSend)(toolbar, sel_registerName("setDelegate:"), toolbarDelegate);
+    ((void (*)(id, SEL, id))objc_msgSend)(toolbar, sel_registerName("setDelegate:"), delegate);
+    
+    // Configure toolbar for modern appearance
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(toolbar, sel_registerName("setAllowsUserCustomization:"), YES);
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(toolbar, sel_registerName("setAutosavesConfiguration:"), YES);
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(toolbar, sel_registerName("setShowsBaselineSeparator:"), NO);
+    
+    // Set toolbar display mode
+    ((void (*)(id, SEL, long))objc_msgSend)(toolbar, sel_registerName("setDisplayMode:"), 1); // NSToolbarDisplayModeIconOnly
+    
+    // Set size mode
+    ((void (*)(id, SEL, long))objc_msgSend)(toolbar, sel_registerName("setSizeMode:"), 0); // NSToolbarSizeModeDefault
     
     // Set toolbar on window
     ((void (*)(id, SEL, id))objc_msgSend)(native->ns_window, sel_registerName("setToolbar:"), toolbar);
     
-    // Store toolbar reference
+    // Store reference
     native->toolbar = toolbar;
     
     if (window->config->development.debug_mode) {
-        printf("Modern macOS toolbar setup completed\n");
+        printf("Modern macOS toolbar setup completed with native sidebar toggle and grouped items\n");
     }
 }
 
 // ============================================================================
-// TOOLBAR DELEGATE CLASS
+// TOOLBAR DELEGATE CLASS (Updated for three-group layout)
 // ============================================================================
 
-// Create toolbar item for identifier
-static id toolbar_item_for_identifier(id self, SEL _cmd, id toolbar, id identifier, BOOL willBeInserted) {
-    (void)toolbar; (void)willBeInserted; // Suppress unused parameter warnings
+// Dynamic toolbar item identifiers from configuration
+static id toolbar_default_item_identifiers(id self, SEL _cmd, id toolbar) {
+    (void)_cmd; (void)toolbar; // Suppress unused warnings
     
     // Get window from delegate
-    app_window_t* window;
+    app_window_t* window = NULL;
     object_getInstanceVariable(self, "window", (void**)&window);
-    
-    if (!window) return nil;
-    
-    Class NSString = objc_getClass("NSString");
-    Class NSToolbarItem = objc_getClass("NSToolbarItem");
-    Class NSButton = objc_getClass("NSButton");
-    Class NSImage = objc_getClass("NSImage");
-    
-    // Get identifier string
-    const char* identifierStr = ((const char* (*)(id, SEL))objc_msgSend)(identifier, sel_registerName("UTF8String"));
-    
-    if (strcmp(identifierStr, "SidebarToggle") == 0) {
-        // Create sidebar toggle toolbar item
-        id toolbarItem = ((id (*)(id, SEL))objc_msgSend)((id)NSToolbarItem, sel_registerName("alloc"));
-        toolbarItem = ((id (*)(id, SEL, id))objc_msgSend)(toolbarItem, sel_registerName("initWithItemIdentifier:"), identifier);
-        
-        // Create button with proper system size
-        id button = ((id (*)(id, SEL))objc_msgSend)((id)NSButton, sel_registerName("alloc"));
-        button = ((id (*)(id, SEL, CGRect))objc_msgSend)(button, sel_registerName("initWithFrame:"), CGRectMake(0, 0, 28, 28));
-        
-        // Set button type and style
-        ((void (*)(id, SEL, long))objc_msgSend)(button, sel_registerName("setButtonType:"), 0); // NSMomentaryPushInButton
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(button, sel_registerName("setBordered:"), NO);
-        ((void (*)(id, SEL, long))objc_msgSend)(button, sel_registerName("setBezelStyle:"), 15); // NSBezelStyleAccessoryBar
-        
-        // Use SF Symbol for sidebar icon with proper configuration
-        id sidebarIcon = nil;
-        Class NSImageSymbolConfiguration = objc_getClass("NSImageSymbolConfiguration");
-        if (NSImageSymbolConfiguration) {
-            // Create symbol configuration for medium size
-            id symbolConfig = ((id (*)(id, SEL, long))objc_msgSend)(
-                (id)NSImageSymbolConfiguration,
-                sel_registerName("configurationWithScale:"),
-                2  // NSImageSymbolScaleMedium
-            );
-            
-            // Create the sidebar.left SF Symbol
-            id symbolName = ((id (*)(id, SEL, const char*))objc_msgSend)(
-                (id)NSString,
-                sel_registerName("stringWithUTF8String:"),
-                "sidebar.left"
-            );
-            
-            sidebarIcon = ((id (*)(id, SEL, id, id))objc_msgSend)(
-                (id)NSImage,
-                sel_registerName("imageWithSystemSymbolName:accessibilityDescription:"),
-                symbolName,
-                nil
-            );
-            
-            if (sidebarIcon) {
-                // Apply the symbol configuration
-                sidebarIcon = ((id (*)(id, SEL, id))objc_msgSend)(
-                    sidebarIcon,
-                    sel_registerName("imageWithSymbolConfiguration:"),
-                    symbolConfig
-                );
-            }
-        }
-        
-        // Fallback to text if SF Symbol not available
-        if (!sidebarIcon) {
-            id buttonTitle = ((id (*)(id, SEL, const char*))objc_msgSend)(
-                (id)NSString,
-                sel_registerName("stringWithUTF8String:"),
-                "☰"
-            );
-            ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setTitle:"), buttonTitle);
-        } else {
-            ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setImage:"), sidebarIcon);
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(button, sel_registerName("setImageHugsTitle:"), YES);
-        }
-        
-        // Store window pointer in button's represented object
-        Class NSValue = objc_getClass("NSValue");
-        id windowPtr = ((id (*)(id, SEL, void*))objc_msgSend)((id)NSValue, sel_registerName("valueWithPointer:"), window);
-        ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setRepresentedObject:"), windowPtr);
-        
-        // Set button action - use the button itself as target and a selector we'll add
-        ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setTarget:"), button);
-        ((void (*)(id, SEL, SEL))objc_msgSend)(button, sel_registerName("setAction:"), sel_registerName("toggleSidebar:"));
-        
-        // Add the action method to the button's class dynamically
-        Class buttonClass = object_getClass(button);
-        if (!class_getInstanceMethod(buttonClass, sel_registerName("toggleSidebar:"))) {
-            class_addMethod(buttonClass, sel_registerName("toggleSidebar:"), (IMP)toolbar_sidebar_toggle_callback, "v@:@");
-            
-            if (window->config->development.debug_mode) {
-                printf("Added toggleSidebar: method to button class\n");
-            }
-        }
-        
-        // Set toolbar item properties
-        id tooltip = ((id (*)(id, SEL, const char*))objc_msgSend)(
-            (id)NSString,
-            sel_registerName("stringWithUTF8String:"),
-            "Toggle Sidebar"
-        );
-        ((void (*)(id, SEL, id))objc_msgSend)(toolbarItem, sel_registerName("setToolTip:"), tooltip);
-        
-        // Set button as toolbar item view
-        ((void (*)(id, SEL, id))objc_msgSend)(toolbarItem, sel_registerName("setView:"), button);
-        
-        // Set proper size constraints for system toolbar
-        CGSize minSize = CGSizeMake(28, 28);
-        CGSize maxSize = CGSizeMake(28, 28);
-        ((void (*)(id, SEL, CGSize))objc_msgSend)(toolbarItem, sel_registerName("setMinSize:"), minSize);
-        ((void (*)(id, SEL, CGSize))objc_msgSend)(toolbarItem, sel_registerName("setMaxSize:"), maxSize);
-        
-        if (window->config->development.debug_mode) {
-            printf("Sidebar toggle toolbar item created with action\n");
-        }
-        
-        return toolbarItem;
+    if (!window || !window->config) {
+        return nil;
     }
     
-    return nil;
-}
-
-// Default toolbar item identifiers
-static id toolbar_default_item_identifiers(id self, SEL _cmd, id toolbar) {
-    (void)self; (void)_cmd; (void)toolbar; // Suppress unused warnings
-    
     Class NSArray = objc_getClass("NSArray");
     Class NSString = objc_getClass("NSString");
+    Class NSMutableArray = objc_getClass("NSMutableArray");
     
-    // Create array of default toolbar item identifiers
-    id sidebarToggleIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
-        (id)NSString,
-        sel_registerName("stringWithUTF8String:"),
-        "SidebarToggle"
+    id mutableArray = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSMutableArray, sel_registerName("alloc")),
+        sel_registerName("init")
     );
     
-    id identifiers = ((id (*)(id, SEL, id, ...))objc_msgSend)(
+    // Add LEFT group buttons
+    const macos_toolbar_config_t* toolbarConfig = &window->config->macos.toolbar;
+    for (int i = 0; i < toolbarConfig->left.button_count; i++) {
+        const toolbar_button_config_t* button = &toolbarConfig->left.buttons[i];
+        if (button->enabled && strlen(button->action) > 0) {
+            id identifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                (id)NSString,
+                sel_registerName("stringWithUTF8String:"),
+                button->action
+            );
+            ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), identifier);
+        }
+    }
+    
+    // Add flexible space to push middle group to center
+    if (toolbarConfig->middle.button_count > 0) {
+        id flexibleSpaceIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            "NSToolbarFlexibleSpaceItem"
+        );
+        ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), flexibleSpaceIdentifier);
+        
+        // Add MIDDLE group buttons
+        for (int i = 0; i < toolbarConfig->middle.button_count; i++) {
+            const toolbar_button_config_t* button = &toolbarConfig->middle.buttons[i];
+            if (button->enabled && strlen(button->action) > 0) {
+                id identifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                    (id)NSString,
+                    sel_registerName("stringWithUTF8String:"),
+                    button->action
+                );
+                ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), identifier);
+            }
+        }
+        
+        // Add flexible space to push right group to the right
+        ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), flexibleSpaceIdentifier);
+    } else if (toolbarConfig->right.button_count > 0) {
+        // If no middle group, just add one flexible space before right group
+        id flexibleSpaceIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            "NSToolbarFlexibleSpaceItem"
+        );
+        ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), flexibleSpaceIdentifier);
+    }
+    
+    // Add RIGHT group buttons
+    for (int i = 0; i < toolbarConfig->right.button_count; i++) {
+        const toolbar_button_config_t* button = &toolbarConfig->right.buttons[i];
+        if (button->enabled && strlen(button->action) > 0) {
+            id identifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                (id)NSString,
+                sel_registerName("stringWithUTF8String:"),
+                button->action
+            );
+            ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), identifier);
+        }
+    }
+    
+    // Convert to immutable array
+    id result = ((id (*)(id, SEL, id))objc_msgSend)(
         (id)NSArray,
-        sel_registerName("arrayWithObjects:"),
-        sidebarToggleIdentifier,
-        nil
+        sel_registerName("arrayWithArray:"),
+        mutableArray
     );
     
-    return identifiers;
+    return result;
 }
 
-// Allowed toolbar item identifiers
+// Dynamic allowed toolbar item identifiers from configuration
 static id toolbar_allowed_item_identifiers(id self, SEL _cmd, id toolbar) {
-    (void)self; (void)_cmd; (void)toolbar; // Suppress unused warnings
+    (void)_cmd; (void)toolbar; // Suppress unused warnings
+    
+    // Get window from delegate
+    app_window_t* window = NULL;
+    object_getInstanceVariable(self, "window", (void**)&window);
+    if (!window || !window->config) {
+        return nil;
+    }
     
     Class NSArray = objc_getClass("NSArray");
     Class NSString = objc_getClass("NSString");
+    Class NSMutableArray = objc_getClass("NSMutableArray");
     
-    // Create array of allowed toolbar item identifiers
-    id sidebarToggleIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
-        (id)NSString,
-        sel_registerName("stringWithUTF8String:"),
-        "SidebarToggle"
+    id mutableArray = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSMutableArray, sel_registerName("alloc")),
+        sel_registerName("init")
     );
+    
+    // Add all button identifiers from all groups
+    const macos_toolbar_config_t* toolbarConfig = &window->config->macos.toolbar;
+    
+    // LEFT group
+    for (int i = 0; i < toolbarConfig->left.button_count; i++) {
+        const toolbar_button_config_t* button = &toolbarConfig->left.buttons[i];
+        if (strlen(button->action) > 0) {
+            id identifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                (id)NSString,
+                sel_registerName("stringWithUTF8String:"),
+                button->action
+            );
+            ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), identifier);
+        }
+    }
+    
+    // MIDDLE group
+    for (int i = 0; i < toolbarConfig->middle.button_count; i++) {
+        const toolbar_button_config_t* button = &toolbarConfig->middle.buttons[i];
+        if (strlen(button->action) > 0) {
+            id identifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                (id)NSString,
+                sel_registerName("stringWithUTF8String:"),
+                button->action
+            );
+            ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), identifier);
+        }
+    }
+    
+    // RIGHT group
+    for (int i = 0; i < toolbarConfig->right.button_count; i++) {
+        const toolbar_button_config_t* button = &toolbarConfig->right.buttons[i];
+        if (strlen(button->action) > 0) {
+            id identifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+                (id)NSString,
+                sel_registerName("stringWithUTF8String:"),
+                button->action
+            );
+            ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), identifier);
+        }
+    }
     
     // Add standard toolbar items
     id flexibleSpaceIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
@@ -1866,16 +2178,246 @@ static id toolbar_allowed_item_identifiers(id self, SEL _cmd, id toolbar) {
         sel_registerName("stringWithUTF8String:"),
         "NSToolbarFlexibleSpaceItem"
     );
+    ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), flexibleSpaceIdentifier);
     
-    id identifiers = ((id (*)(id, SEL, id, ...))objc_msgSend)(
+    id spaceIdentifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        "NSToolbarSpaceItem"
+    );
+    ((void (*)(id, SEL, id))objc_msgSend)(mutableArray, sel_registerName("addObject:"), spaceIdentifier);
+    
+    // Convert to immutable array
+    id result = ((id (*)(id, SEL, id))objc_msgSend)(
         (id)NSArray,
-        sel_registerName("arrayWithObjects:"),
-        sidebarToggleIdentifier,
-        flexibleSpaceIdentifier,
-        nil
+        sel_registerName("arrayWithArray:"),
+        mutableArray
     );
     
-    return identifiers;
+    return result;
+}
+
+// Dynamic toolbar item creation from configuration
+static id toolbar_item_for_identifier(id self, SEL _cmd, id toolbar, id itemIdentifier) {
+    (void)_cmd; (void)toolbar; // Suppress unused warnings
+    
+    // Get window from delegate
+    app_window_t* window = NULL;
+    object_getInstanceVariable(self, "window", (void**)&window);
+    if (!window || !window->config) {
+        return nil;
+    }
+    
+    Class NSString = objc_getClass("NSString");
+    
+    // Get identifier string
+    const char* identifier = ((const char* (*)(id, SEL))objc_msgSend)(
+        itemIdentifier,
+        sel_registerName("UTF8String")
+    );
+    
+    // Search all groups for matching button configuration
+    const macos_toolbar_config_t* toolbarConfig = &window->config->macos.toolbar;
+    
+    // Search LEFT group
+    for (int i = 0; i < toolbarConfig->left.button_count; i++) {
+        const toolbar_button_config_t* button = &toolbarConfig->left.buttons[i];
+        if (strcmp(button->action, identifier) == 0) {
+            return create_toolbar_button_from_config(button, window);
+        }
+    }
+    
+    // Search MIDDLE group
+    for (int i = 0; i < toolbarConfig->middle.button_count; i++) {
+        const toolbar_button_config_t* button = &toolbarConfig->middle.buttons[i];
+        if (strcmp(button->action, identifier) == 0) {
+            return create_toolbar_button_from_config(button, window);
+        }
+    }
+    
+    // Search RIGHT group
+    for (int i = 0; i < toolbarConfig->right.button_count; i++) {
+        const toolbar_button_config_t* button = &toolbarConfig->right.buttons[i];
+        if (strcmp(button->action, identifier) == 0) {
+            return create_toolbar_button_from_config(button, window);
+        }
+    }
+    
+    // Handle standard toolbar items
+    if (strcmp(identifier, "NSToolbarFlexibleSpaceItem") == 0 ||
+        strcmp(identifier, "NSToolbarSpaceItem") == 0 ||
+        strcmp(identifier, "NSToolbarSeparatorItem") == 0) {
+        
+        Class NSToolbarItem = objc_getClass("NSToolbarItem");
+        id toolbarItem = ((id (*)(id, SEL, id))objc_msgSend)(
+            ((id (*)(id, SEL))objc_msgSend)((id)NSToolbarItem, sel_registerName("alloc")),
+            sel_registerName("initWithItemIdentifier:"),
+            itemIdentifier
+        );
+        return toolbarItem;
+    }
+    
+    // Unknown identifier
+    printf("Warning: Unknown toolbar item identifier: %s\n", identifier);
+    return nil;
+}
+
+// Add callback methods for the new buttons
+void middleExampleAction(id self, SEL _cmd, id sender) {
+    printf("Middle example button clicked\n");
+    // Add your custom action here
+}
+
+void searchAction(id self, SEL _cmd, id sender) {
+    printf("Search button clicked\n");
+    // Add your search functionality here
+}
+
+void shareAction(id self, SEL _cmd, id sender) {
+    printf("Share button clicked\n");
+    // Add your share functionality here
+}
+
+// ============================================================================
+// TOOLBAR HELPER FUNCTIONS
+// ============================================================================
+
+// Helper function to create a toolbar button with native NSButton
+static id create_toolbar_button_with_symbol(const char* symbolName, const char* action_name, const char* tooltip, app_window_t* window) {
+    Class NSToolbarItem = objc_getClass("NSToolbarItem");
+    Class NSButton = objc_getClass("NSButton");
+    Class NSImage = objc_getClass("NSImage");
+    Class NSString = objc_getClass("NSString");
+    Class NSValue = objc_getClass("NSValue");
+    
+    // Create identifier from action name
+    id identifier = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        action_name
+    );
+    
+    // Create toolbar item
+    id toolbarItem = ((id (*)(id, SEL, id))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSToolbarItem, sel_registerName("alloc")),
+        sel_registerName("initWithItemIdentifier:"),
+        identifier
+    );
+    
+    // Create SF Symbol image first
+    id symbolString = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        symbolName
+    );
+    
+    id icon = nil;
+    
+    // Try to create system symbol first
+    if (NSImage) {
+        icon = ((id (*)(id, SEL, id, id))objc_msgSend)(
+            (id)NSImage,
+            sel_registerName("imageWithSystemSymbolName:accessibilityDescription:"),
+            symbolString,
+            nil
+        );
+    }
+    
+    if (!icon) {
+        // Fallback to system image
+        icon = ((id (*)(id, SEL, id))objc_msgSend)(
+            (id)NSImage,
+            sel_registerName("imageNamed:"),
+            symbolString
+        );
+    }
+    
+    if (icon) {
+        // Set proper icon size for toolbar buttons
+        CGSize iconSize = CGSizeMake(24, 24);
+        ((void (*)(id, SEL, CGSize))objc_msgSend)(icon, sel_registerName("setSize:"), iconSize);
+    }
+    
+    // Find the callback function from our registry
+    void (*callback_func)(id, SEL, id) = find_toolbar_callback(action_name);
+    if (!callback_func) {
+        printf("Warning: No callback found for action '%s'\n", action_name);
+        return nil;
+    }
+    
+    // Create action selector
+    char actionSelectorName[256];
+    snprintf(actionSelectorName, sizeof(actionSelectorName), "%s:", action_name);
+    SEL action = sel_registerName(actionSelectorName);
+    
+    // Create native NSButton using the proper initializer: NSButton(image:target:action:)
+    id button = ((id (*)(id, SEL, id, id, SEL))objc_msgSend)(
+        (id)NSButton,
+        sel_registerName("buttonWithImage:target:action:"),
+        icon,
+        nil,  // target will be set later
+        action
+    );
+    
+    if (button) {
+        // Configure the native button for toolbar use
+        ((void (*)(id, SEL, long))objc_msgSend)(button, sel_registerName("setButtonType:"), 7); // NSMomentaryChangeButton for proper hover behavior
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(button, sel_registerName("setBordered:"), NO); // No border by default
+        ((void (*)(id, SEL, long))objc_msgSend)(button, sel_registerName("setBezelStyle:"), 4); // NSBezelStyleRegularSquare for clean look
+        
+        // Enable hover highlighting using NSButtonCell methods
+        id buttonCell = ((id (*)(id, SEL))objc_msgSend)(button, sel_registerName("cell"));
+        if (buttonCell) {
+            ((void (*)(id, SEL, long))objc_msgSend)(buttonCell, sel_registerName("setHighlightsBy:"), 1); // NSContentsCellMask - content highlighting
+            ((void (*)(id, SEL, long))objc_msgSend)(buttonCell, sel_registerName("setShowsStateBy:"), 0); // NSNoCellMask - no state indication by default
+        }
+        
+        // Configure for toolbar appearance - transparent by default, subtle highlight on hover
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(button, sel_registerName("setTransparent:"), NO);
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(button, sel_registerName("setShowsBorderOnlyWhileMouseInside:"), YES);
+        
+        // Set proper button size
+        CGRect buttonFrame = CGRectMake(0, 0, 24, 24);
+        ((void (*)(id, SEL, CGRect))objc_msgSend)(button, sel_registerName("setFrame:"), buttonFrame);
+        
+        // Set target to the button itself for action callbacks
+        ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setTarget:"), button);
+        
+        // Store window pointer for action callbacks
+        id windowValue = ((id (*)(id, SEL, void*))objc_msgSend)(
+            (id)NSValue,
+            sel_registerName("valueWithPointer:"),
+            window
+        );
+        ((void (*)(id, SEL, id))objc_msgSend)(button, sel_registerName("setRepresentedObject:"), windowValue);
+        
+        // Add action method to button class dynamically
+        Class buttonClass = object_getClass(button);
+        class_addMethod(buttonClass, action, (IMP)callback_func, "v@:@");
+    }
+    
+    // Set tooltip on toolbar item
+    id tooltipStr = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        tooltip
+    );
+    ((void (*)(id, SEL, id))objc_msgSend)(toolbarItem, sel_registerName("setToolTip:"), tooltipStr);
+    
+    // Set button as the view for the toolbar item
+    ((void (*)(id, SEL, id))objc_msgSend)(toolbarItem, sel_registerName("setView:"), button);
+    
+    return toolbarItem;
+}
+
+// Create toolbar button from configuration structure
+static id create_toolbar_button_from_config(const toolbar_button_config_t* config, app_window_t* window) {
+    // Validate input
+    if (!config || !config->enabled || strlen(config->name) == 0) {
+        return nil;
+    }
+    
+    return create_toolbar_button_with_symbol(config->icon, config->action, config->tooltip, window);
 }
 
 #endif // __APPLE__ 

@@ -407,47 +407,237 @@ static void parse_sidebar_item(const char* json, const char* sidebar_section, in
 }
 
 static void parse_sidebar_config(const char* json, sidebar_config_t* sidebar) {
-    // Set defaults
-    strcpy(sidebar->title, "Navigation");
-    sidebar->enabled = false;
-    sidebar->width = 200;
-    sidebar->max_width = 0;  // No limit by default
-    sidebar->resizable = true;
-    sidebar->collapsible = true;
-    sidebar->start_collapsed = false;
+    // Find the macos section first
+    char* macos_section = strstr(json, "\"macos\"");
+    if (!macos_section) {
+        sidebar->enabled = false;
+        return;
+    }
+    
+    // Find the sidebar section within macOS
+    char* sidebar_section = strstr(macos_section, "\"sidebar\"");
+    if (!sidebar_section) {
+        sidebar->enabled = false;
+        return;
+    }
+    
+    // Parse sidebar title
+    char* title_val = find_json_value(sidebar_section, "title");
+    if (title_val) {
+        strncpy(sidebar->title, title_val, sizeof(sidebar->title) - 1);
+        sidebar->title[sizeof(sidebar->title) - 1] = '\0';
+        free(title_val);
+    } else {
+        strcpy(sidebar->title, "Navigation");
+    }
+    
+    // Parse sidebar properties
+    char* enabled_val = find_json_value(sidebar_section, "enabled");
+    if (enabled_val) {
+        sidebar->enabled = (strcmp(enabled_val, "true") == 0);
+        free(enabled_val);
+    } else {
+        sidebar->enabled = true;
+    }
+    
+    char* width_val = find_json_value(sidebar_section, "width");
+    if (width_val) {
+        sidebar->width = atoi(width_val);
+        free(width_val);
+    } else {
+        sidebar->width = 200;
+    }
+    
+    char* max_width_val = find_json_value(sidebar_section, "max_width");
+    if (max_width_val) {
+        sidebar->max_width = atoi(max_width_val);
+        free(max_width_val);
+    } else {
+        sidebar->max_width = 400;
+    }
+    
+    char* resizable_val = find_json_value(sidebar_section, "resizable");
+    if (resizable_val) {
+        sidebar->resizable = (strcmp(resizable_val, "true") == 0);
+        free(resizable_val);
+    } else {
+        sidebar->resizable = true;
+    }
+    
+    char* collapsible_val = find_json_value(sidebar_section, "collapsible");
+    if (collapsible_val) {
+        sidebar->collapsible = (strcmp(collapsible_val, "true") == 0);
+        free(collapsible_val);
+    } else {
+        sidebar->collapsible = true;
+    }
+    
+    char* start_collapsed_val = find_json_value(sidebar_section, "start_collapsed");
+    if (start_collapsed_val) {
+        sidebar->start_collapsed = (strcmp(start_collapsed_val, "true") == 0);
+        free(start_collapsed_val);
+    } else {
+        sidebar->start_collapsed = false;
+    }
+    
+    // Parse sidebar items
     sidebar->item_count = 0;
-    
-    sidebar->enabled = parse_nested_bool(json, "sidebar", "enabled", false);
-    parse_nested_string(json, "sidebar", "title", sidebar->title, sizeof(sidebar->title));
-    sidebar->width = parse_int(find_nested_json_value(json, "sidebar", "width") ?: "200", "width", 200);
-    sidebar->max_width = parse_int(find_nested_json_value(json, "sidebar", "max_width") ?: "0", "max_width", 0);
-    sidebar->resizable = parse_nested_bool(json, "sidebar", "resizable", true);
-    sidebar->collapsible = parse_nested_bool(json, "sidebar", "collapsible", true);
-    sidebar->start_collapsed = parse_nested_bool(json, "sidebar", "start_collapsed", false);
-    
-    // Count and parse items
-    char* sidebar_start = strstr(json, "\"sidebar\"");
-    if (sidebar_start) {
-        char* items_start = strstr(sidebar_start, "\"items\":");
-        if (items_start) {
-            char* array_start = strchr(items_start, '[');
-            char* array_end = strchr(array_start, ']');
-            if (array_start && array_end) {
-                // Count objects in array
-                sidebar->item_count = 0;
-                char* current = array_start;
-                while (current < array_end && sidebar->item_count < 16) {
-                    current = strchr(current + 1, '{');
-                    if (current && current < array_end) {
-                        parse_sidebar_item(json, "sidebar", sidebar->item_count, &sidebar->items[sidebar->item_count]);
-                        sidebar->item_count++;
-                    } else {
-                        break;
-                    }
-                }
-            }
+    for (int i = 0; i < 16; i++) {
+        parse_sidebar_item(json, "sidebar", i, &sidebar->items[i]);
+        if (strlen(sidebar->items[i].title) > 0) {
+            sidebar->item_count++;
+        } else {
+            break;
         }
     }
+}
+
+// Parse a single toolbar button configuration
+static void parse_toolbar_button(const char* json, const char* group_section, int button_index, toolbar_button_config_t* button) {
+    // Initialize button with empty values
+    memset(button, 0, sizeof(toolbar_button_config_t));
+    
+    // Find the group section (left, middle, or right)
+    char* group_start = strstr(json, group_section);
+    if (!group_start) return;
+    
+    // Find the buttons array within the group
+    char* buttons_start = strstr(group_start, "\"buttons\":");
+    if (!buttons_start) return;
+    
+    char* array_start = strchr(buttons_start, '[');
+    if (!array_start) return;
+    
+    // Navigate to the specific button
+    char* current = array_start + 1;
+    for (int i = 0; i < button_index && current; i++) {
+        current = strchr(current, '{');
+        if (current) current++;
+        
+        // Find the end of this button object
+        int brace_count = 1;
+        char* button_end = current;
+        while (*button_end && brace_count > 0) {
+            if (*button_end == '{') brace_count++;
+            if (*button_end == '}') brace_count--;
+            button_end++;
+        }
+        current = button_end;
+    }
+    
+    if (!current) return;
+    
+    // Find the start of this button object
+    current = strchr(current - 1, '{');
+    if (!current) return;
+    
+    // Find the end of this button object
+    int brace_count = 1;
+    char* button_end = current + 1;
+    while (*button_end && brace_count > 0) {
+        if (*button_end == '{') brace_count++;
+        if (*button_end == '}') brace_count--;
+        button_end++;
+    }
+    
+    // Create a substring for this button
+    int button_length = button_end - current;
+    char* button_content = malloc(button_length + 1);
+    strncpy(button_content, current, button_length);
+    button_content[button_length] = '\0';
+    
+    // Parse button properties
+    char* name_val = find_json_value(button_content, "name");
+    if (name_val) {
+        strncpy(button->name, name_val, sizeof(button->name) - 1);
+        button->name[sizeof(button->name) - 1] = '\0';
+        free(name_val);
+    }
+    
+    char* icon_val = find_json_value(button_content, "icon");
+    if (icon_val) {
+        strncpy(button->icon, icon_val, sizeof(button->icon) - 1);
+        button->icon[sizeof(button->icon) - 1] = '\0';
+        free(icon_val);
+    }
+    
+    char* action_val = find_json_value(button_content, "action");
+    if (action_val) {
+        strncpy(button->action, action_val, sizeof(button->action) - 1);
+        button->action[sizeof(button->action) - 1] = '\0';
+        free(action_val);
+    }
+    
+    char* tooltip_val = find_json_value(button_content, "tooltip");
+    if (tooltip_val) {
+        strncpy(button->tooltip, tooltip_val, sizeof(button->tooltip) - 1);
+        button->tooltip[sizeof(button->tooltip) - 1] = '\0';
+        free(tooltip_val);
+    }
+    
+    char* enabled_val = find_json_value(button_content, "enabled");
+    if (enabled_val) {
+        button->enabled = (strcmp(enabled_val, "true") == 0);
+        free(enabled_val);
+    } else {
+        button->enabled = true;
+    }
+    
+    free(button_content);
+}
+
+// Parse a toolbar group (left, middle, or right)
+static void parse_toolbar_group(const char* json, const char* group_name, toolbar_group_config_t* group) {
+    group->button_count = 0;
+    
+    // Parse buttons in this group
+    for (int i = 0; i < 8; i++) {
+        parse_toolbar_button(json, group_name, i, &group->buttons[i]);
+        if (strlen(group->buttons[i].name) > 0) {
+            group->button_count++;
+        } else {
+            break;
+        }
+    }
+}
+
+// Parse complete toolbar configuration
+static void parse_toolbar_config(const char* json, macos_toolbar_config_t* toolbar) {
+    // Find the macOS section first
+    char* macos_section = strstr(json, "\"macos\"");
+    if (!macos_section) {
+        toolbar->enabled = false;
+        return;
+    }
+    
+    // Find the toolbar section within macOS
+    char* toolbar_section = strstr(macos_section, "\"toolbar\"");
+    if (!toolbar_section) {
+        toolbar->enabled = false;
+        return;
+    }
+    
+    // Parse basic toolbar properties
+    char* enabled_val = find_json_value(toolbar_section, "enabled");
+    if (enabled_val) {
+        toolbar->enabled = (strcmp(enabled_val, "true") == 0);
+        free(enabled_val);
+    } else {
+        toolbar->enabled = false;
+    }
+    
+    char* show_toggle_val = find_json_value(toolbar_section, "show_toggle_button");
+    if (show_toggle_val) {
+        toolbar->show_toggle_button = (strcmp(show_toggle_val, "true") == 0);
+        free(show_toggle_val);
+    } else {
+        toolbar->show_toggle_button = true;
+    }
+    
+    // Parse toolbar groups
+    parse_toolbar_group(toolbar_section, "\"left\"", &toolbar->left);
+    parse_toolbar_group(toolbar_section, "\"middle\"", &toolbar->middle);
+    parse_toolbar_group(toolbar_section, "\"right\"", &toolbar->right);
 }
 
 app_configuration_t* load_config(const char* config_file) {
@@ -489,28 +679,8 @@ app_configuration_t* load_config(const char* config_file) {
     // Use a simpler approach to parse nested macOS configurations
     char* macos_section = strstr(json_content, "\"macos\"");
     if (macos_section) {
-        // Parse toolbar.enabled within macos section
-        char* toolbar_section = strstr(macos_section, "\"toolbar\"");
-        if (toolbar_section) {
-            char* enabled_val = find_json_value(toolbar_section, "enabled");
-            if (enabled_val) {
-                config->macos.toolbar.enabled = (strcmp(enabled_val, "true") == 0);
-                free(enabled_val);
-            } else {
-                config->macos.toolbar.enabled = false;
-            }
-            
-            char* show_toggle_val = find_json_value(toolbar_section, "show_toggle_button");
-            if (show_toggle_val) {
-                config->macos.toolbar.show_toggle_button = (strcmp(show_toggle_val, "true") == 0);
-                free(show_toggle_val);
-            } else {
-                config->macos.toolbar.show_toggle_button = true;
-            }
-        } else {
-            config->macos.toolbar.enabled = false;
-            config->macos.toolbar.show_toggle_button = true;
-        }
+        // Parse toolbar configuration
+        parse_toolbar_config(json_content, &config->macos.toolbar);
         
         // Parse sidebar configuration within macOS section
         parse_sidebar_config(json_content, &config->macos.sidebar);

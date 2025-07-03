@@ -26,6 +26,7 @@ typedef struct {
     id webview_config;             // WKWebViewConfiguration
     id script_handler;             // WKScriptMessageHandler
     id toolbar;                    // NSToolbar
+    id sidebar_accessory;          // NSTitlebarAccessoryViewController for sidebar toggle
     bool sidebar_visible;
 } platform_native_window_t;
 #else

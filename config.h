@@ -47,6 +47,21 @@ typedef struct {
     bool separator_after;
 } sidebar_item_config_t;
 
+// Toolbar button configuration
+typedef struct {
+    char name[64];         // Button name/title
+    char icon[64];         // SF Symbol name (e.g., "gear", "magnifyingglass")
+    char action[64];       // Action function name to call
+    char tooltip[128];     // Tooltip text
+    bool enabled;          // Whether button is enabled
+} toolbar_button_config_t;
+
+// Toolbar groups configuration
+typedef struct {
+    toolbar_button_config_t buttons[8];  // Max 8 buttons per group
+    int button_count;
+} toolbar_group_config_t;
+
 typedef struct {
     char title[64];
     sidebar_item_config_t items[16];
@@ -62,6 +77,9 @@ typedef struct {
 typedef struct {
     bool enabled;
     bool show_toggle_button;  // Show native sidebar toggle button in toolbar
+    toolbar_group_config_t left;     // Left toolbar group
+    toolbar_group_config_t middle;   // Middle toolbar group  
+    toolbar_group_config_t right;    // Right toolbar group
 } macos_toolbar_config_t;
 
 typedef struct {
