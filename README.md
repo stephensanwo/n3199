@@ -1,5 +1,7 @@
 # Cross platform desktop apps in C + Webview 
 
+![app](./image.png)
+
 Multi framework support, react, vue, svelte
 
 ## Prerequisites
