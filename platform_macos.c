@@ -25,9 +25,25 @@
 // Global application state
 static id g_app = nil;
 static const app_configuration_t* stored_config = NULL;
+static app_window_t* g_current_window = NULL; // Store current window for menu actions
 
 // Function declarations
 static id create_script_message_handler(app_window_t* window);
+
+// Menu action callback - this gets called when menu items are selected
+void menu_action_callback(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; // Suppress unused parameter warnings
+    
+    // Get the action from the menu item
+    Class NSMenuItem = objc_getClass("NSMenuItem");
+    if (((BOOL (*)(id, SEL, id))objc_msgSend)(sender, sel_registerName("isKindOfClass:"), (id)NSMenuItem)) {
+        id represented_object = ((id (*)(id, SEL))objc_msgSend)(sender, sel_registerName("representedObject"));
+        if (represented_object) {
+            const char* action = ((const char* (*)(id, SEL))objc_msgSend)(represented_object, sel_registerName("UTF8String"));
+            platform_handle_menu_action(action);
+        }
+    }
+}
 
 // Forward declarations
 static void cleanup_main_window(void);
@@ -125,6 +141,21 @@ bool platform_init(const app_configuration_t* app_config) {
         return false;
     }
     
+    // Add menu action method to NSApplication class for menu handling
+    Class appClass = object_getClass(g_app);
+    SEL menuActionSelector = sel_registerName("menuAction:");
+    if (!class_addMethod(appClass, menuActionSelector, (IMP)menu_action_callback, "v@:@")) {
+        // Method might already exist, try to replace it
+        method_setImplementation(class_getInstanceMethod(appClass, menuActionSelector), (IMP)menu_action_callback);
+        if (app_config->development.debug_mode) {
+            printf("Menu action method replaced on NSApplication\n");
+        }
+    } else {
+        if (app_config->development.debug_mode) {
+            printf("Menu action method added to NSApplication\n");
+        }
+    }
+    
     // Set activation policy to regular app (shows in dock)
     ((void (*)(id, SEL, long))objc_msgSend)(g_app, sel_registerName("setActivationPolicy:"), 0); // NSApplicationActivationPolicyRegular
     
@@ -172,6 +203,9 @@ void platform_cleanup(void) {
 
 bool platform_create_window(app_window_t* window) {
     if (!window) return false;
+    
+    // Store global window reference for menu actions
+    g_current_window = window;
     
     // Create native window structure
     platform_native_window_t* native = malloc(sizeof(platform_native_window_t));
@@ -393,7 +427,14 @@ void platform_handle_menu_action(const char* action) {
     
     printf("Menu action triggered: %s\n", action);
     
-    // Handle common menu actions
+    // First, check if this action is a registered bridge function
+    if (g_current_window && bridge_function_exists(action)) {
+        printf("Menu action '%s' found in bridge system - forwarding to bridge\n", action);
+        bridge_handle_toolbar_action(action, g_current_window);
+        return;
+    }
+    
+    // Handle common menu actions (legacy fallback)
     if (strcmp(action, "new") == 0) {
         printf("Creating new document...\n");
     } else if (strcmp(action, "open") == 0) {
@@ -432,21 +473,6 @@ void platform_handle_menu_action(const char* action) {
 // ============================================================================
 // MENU SYSTEM (keeping existing implementation)
 // ============================================================================
-
-// Menu action callback - this gets called when menu items are selected
-void menu_action_callback(id self, SEL _cmd, id sender) {
-    (void)self; (void)_cmd; // Suppress unused parameter warnings
-    
-    // Get the action from the menu item
-    Class NSMenuItem = objc_getClass("NSMenuItem");
-    if (((BOOL (*)(id, SEL, id))objc_msgSend)(sender, sel_registerName("isKindOfClass:"), (id)NSMenuItem)) {
-        id represented_object = ((id (*)(id, SEL))objc_msgSend)(sender, sel_registerName("representedObject"));
-        if (represented_object) {
-            const char* action = ((const char* (*)(id, SEL))objc_msgSend)(represented_object, sel_registerName("UTF8String"));
-            platform_handle_menu_action(action);
-        }
-    }
-}
 
 static unsigned long parse_key_equivalent(const char* shortcut) {
     if (!shortcut || strlen(shortcut) == 0) return 0;

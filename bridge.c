@@ -300,6 +300,19 @@ bool bridge_call_function(const char* function_name, const char* json_params, ap
     return false;
 }
 
+// NEW: Check if a bridge function exists
+bool bridge_function_exists(const char* function_name) {
+    if (!function_name) return false;
+    
+    for (size_t i = 0; i < g_function_count; i++) {
+        if (strcmp(g_functions[i].name, function_name) == 0) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 // NEW: Send event to frontend (for toolbar actions that should trigger frontend events)
 void bridge_send_event(const char* event_name, const char* json_data, app_window_t* window) {
     if (!event_name || !window) return;

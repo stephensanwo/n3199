@@ -42,6 +42,13 @@
           "separator_after": false
         },
         {
+          "title": "Search",
+          "action": "toolbar_search_callback",
+          "shortcut": "cmd+f",
+          "enabled": true,
+          "separator_after": true
+        },
+        {
           "title": "Save",
           "shortcut": "cmd+s",
           "action": "save",

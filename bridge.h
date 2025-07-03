@@ -33,6 +33,7 @@ void bridge_handle_message(const char* json_message, app_window_t* window);
 
 // Native to bridge calling (NEW - for bidirectional communication)
 bool bridge_call_function(const char* function_name, const char* json_params, app_window_t* window);
+bool bridge_function_exists(const char* function_name);
 void bridge_send_event(const char* event_name, const char* json_data, app_window_t* window);
 
 // Toolbar action dispatcher (NEW - for dynamic toolbar callbacks)
