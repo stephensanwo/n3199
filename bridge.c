@@ -272,15 +272,69 @@ char* bridge_get_json_value(const char* json_args, const char* key) {
 
 // List all registered functions
 void bridge_list_functions(void) {
-    printf("=== Bridge Functions (%zu registered) ===\n", g_function_count);
+    printf("=== Registered Bridge Functions ===\n");
+    for (size_t i = 0; i < g_function_count; i++) {
+        printf("  %s - %s\n", g_functions[i].name, g_functions[i].description);
+    }
+    printf("===================================\n");
+}
+
+// NEW: Native to bridge function calling
+bool bridge_call_function(const char* function_name, const char* json_params, app_window_t* window) {
+    if (!function_name || !window) {
+        printf("Bridge call failed: Invalid parameters\n");
+        return false;
+    }
     
-    if (g_function_count == 0) {
-        printf("No functions registered.\n");
+    // Find the function
+    for (size_t i = 0; i < g_function_count; i++) {
+        if (strcmp(g_functions[i].name, function_name) == 0) {
+            printf("Native bridge call: %s\n", function_name);
+            // Call with a dummy callback ID since this is a native call
+            g_functions[i].handler(json_params ? json_params : "{}", "native_call", window);
+            return true;
+        }
+    }
+    
+    printf("Bridge call failed: Function '%s' not found\n", function_name);
+    return false;
+}
+
+// NEW: Send event to frontend (for toolbar actions that should trigger frontend events)
+void bridge_send_event(const char* event_name, const char* json_data, app_window_t* window) {
+    if (!event_name || !window) return;
+    
+    char event_js[1024];
+    if (json_data && strlen(json_data) > 0) {
+        snprintf(event_js, sizeof(event_js), 
+            "if (window.bridge?.onNativeEvent) { window.bridge.onNativeEvent('%s', %s); }", 
+            event_name, json_data);
+    } else {
+        snprintf(event_js, sizeof(event_js), 
+            "if (window.bridge?.onNativeEvent) { window.bridge.onNativeEvent('%s'); }", 
+            event_name);
+    }
+    
+    printf("Sending native event: %s\n", event_name);
+    platform_webview_evaluate_javascript(window, event_js);
+}
+
+// NEW: Toolbar action dispatcher - handles toolbar button clicks dynamically
+void bridge_handle_toolbar_action(const char* action_name, app_window_t* window) {
+    if (!action_name || !window) return;
+    
+    printf("Handling toolbar action: %s\n", action_name);
+    
+    // First, try to call it as a registered bridge function
+    if (bridge_call_function(action_name, "{}", window)) {
+        printf("Toolbar action '%s' handled by bridge function\n", action_name);
         return;
     }
     
-    for (size_t i = 0; i < g_function_count; i++) {
-        printf("%zu. %s - %s\n", i + 1, g_functions[i].name, g_functions[i].description);
-    }
-    printf("=====================================\n");
+    // If not found as bridge function, send as an event to frontend
+    char event_data[256];
+    snprintf(event_data, sizeof(event_data), "{\"action\":\"%s\"}", action_name);
+    bridge_send_event("toolbar_action", event_data, window);
+    
+    printf("Toolbar action '%s' sent as frontend event\n", action_name);
 } 

@@ -162,7 +162,6 @@
   "macos": {
     "toolbar": {
       "enabled": true,
-      "show_toggle_button": true,
       "left": {
         "buttons": [
           {
@@ -225,42 +224,7 @@
         ]
       }
     },
-    "show_title_bar": false,
-    "sidebar": {
-      "enabled": true,
-      "title": "Navigation",
-      "width": 250,
-      "max_width": 400,
-      "resizable": true,
-      "collapsible": true,
-      "start_collapsed": false,
-      "items": [
-        {
-          "title": "Home",
-          "action": "navigate_home",
-          "enabled": true,
-          "separator_after": false
-        },
-        {
-          "title": "Documents",
-          "action": "navigate_documents",
-          "enabled": true,
-          "separator_after": false
-        },
-        {
-          "title": "Settings",
-          "action": "navigate_settings",
-          "enabled": true,
-          "separator_after": true
-        },
-        {
-          "title": "Help",
-          "action": "show_help",
-          "enabled": true,
-          "separator_after": false
-        }
-      ]
-    }
+    "show_title_bar": false
   },
   "development": {
     "debug_mode": true,

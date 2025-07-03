@@ -31,6 +31,13 @@ void bridge_list_functions(void);
 // Message handling
 void bridge_handle_message(const char* json_message, app_window_t* window);
 
+// Native to bridge calling (NEW - for bidirectional communication)
+bool bridge_call_function(const char* function_name, const char* json_params, app_window_t* window);
+void bridge_send_event(const char* event_name, const char* json_data, app_window_t* window);
+
+// Toolbar action dispatcher (NEW - for dynamic toolbar callbacks)
+void bridge_handle_toolbar_action(const char* action_name, app_window_t* window);
+
 // Utility functions for handlers
 void bridge_send_response(const char* callback_id, const char* result, app_window_t* window);
 void bridge_send_error(const char* callback_id, const char* error, app_window_t* window);

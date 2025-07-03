@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
     
     platform_show_window(g_main_window);
     
-    // Setup webview if enabled (includes modern toolbar and sidebar setup)
+    // Setup webview if enabled (includes modern toolbar setup)
     if (app_config->webview.enabled) {
         platform_setup_webview(g_main_window);
         
@@ -92,7 +92,7 @@ int main(int argc, char* argv[]) {
         }
         
         if (app_config->development.debug_mode) {
-            printf("Modern WebView with NSSplitViewController and NSToolbar setup completed\n");
+            printf("Modern WebView with NSToolbar setup completed\n");
         }
     }
     
@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
     }
     
     if (app_config->development.debug_mode) {
-        printf("Modern macOS app with NSSplitViewController and NSToolbar initialized\n");
+        printf("Modern macOS app with NSToolbar initialized\n");
     }
     
     printf("Starting application event loop...\n");

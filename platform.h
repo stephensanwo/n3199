@@ -18,22 +18,15 @@ typedef unsigned long NSUInteger;
 typedef struct {
     id ns_app;
     id ns_window;
-    id window_controller;           // NSWindowController
-    id split_view_controller;       // NSSplitViewController (reused for NSSplitView)
-    id sidebar_view_controller;     // NSViewController for sidebar (reused for scroll view)
-    id main_view_controller;        // NSViewController for webview
-    id webview;                     // WKWebView
+    id webview;                     // WKWebView (main content view)
     id webview_config;             // WKWebViewConfiguration
     id script_handler;             // WKScriptMessageHandler
     id toolbar;                    // NSToolbar
-    id sidebar_accessory;          // NSTitlebarAccessoryViewController for sidebar toggle
-    bool sidebar_visible;
 } platform_native_window_t;
 #else
 // Platform-agnostic fallback
 typedef struct {
     void* native_handle;
-    bool sidebar_visible;
 } platform_native_window_t;
 #endif
 
@@ -75,12 +68,6 @@ void platform_run_event_loop(void);
 
 // Global configuration
 extern app_configuration_t* app_config;
-
-// macOS-specific modern platform functions
-void platform_macos_toggle_sidebar(app_window_t* window);
-void platform_macos_show_sidebar(app_window_t* window);
-void platform_macos_hide_sidebar(app_window_t* window);
-void platform_handle_sidebar_action(const char* action, app_window_t* window);
 
 #ifdef PLATFORM_WINDOWS
 void platform_windows_setup_toolbar(app_window_t* window);

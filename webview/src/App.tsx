@@ -8,7 +8,9 @@ function App() {
   const [count, setCount] = useState(0);
   const [greeting, setGreeting] = useState("");
   const [error, setError] = useState("");
-  const [sidebarVisible, setSidebarVisible] = useState(false);
+  // NEW: Search state for native toolbar events
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState("");
 
   // Initialize counter from C backend
   useEffect(() => {
@@ -25,18 +27,53 @@ function App() {
       });
   }, []);
 
-  // Get initial sidebar state
+  // NEW: Set up native event listeners
   useEffect(() => {
-    console.log("Getting initial sidebar state...");
-    bridge.sidebar
-      .getState()
-      .then((state) => {
-        console.log("Initial sidebar state:", state);
-        setSidebarVisible(state.visible);
-      })
-      .catch((err: Error) => {
-        console.error("Failed to get sidebar state:", err);
-      });
+    console.log("Setting up native event listeners...");
+
+    // Handle search events from native toolbar
+    const handleOpenSearch = () => {
+      console.log("Native search event received!");
+      setIsSearching(true);
+      setSearchMessage("Searching...");
+
+      // Simulate search operation
+      setTimeout(() => {
+        setSearchMessage("Search results would appear here");
+      }, 1500);
+    };
+
+    // Handle settings events
+    const handleOpenSettings = () => {
+      console.log("Native settings event received!");
+      alert("Settings panel would open here");
+    };
+
+    // Handle share events
+    const handleShowShare = () => {
+      console.log("Native share event received!");
+      alert("Share options would appear here");
+    };
+
+    // Handle favorites events
+    const handleToggleFavorites = () => {
+      console.log("Native favorites event received!");
+      alert("Favorites toggled!");
+    };
+
+    // Register event listeners
+    bridge.addEventListener("open_search", handleOpenSearch);
+    bridge.addEventListener("open_settings", handleOpenSettings);
+    bridge.addEventListener("show_share", handleShowShare);
+    bridge.addEventListener("toggle_favorites", handleToggleFavorites);
+
+    // Cleanup listeners on unmount
+    return () => {
+      bridge.removeEventListener("open_search", handleOpenSearch);
+      bridge.removeEventListener("open_settings", handleOpenSettings);
+      bridge.removeEventListener("show_share", handleShowShare);
+      bridge.removeEventListener("toggle_favorites", handleToggleFavorites);
+    };
   }, []);
 
   // Handle increment
@@ -87,130 +124,174 @@ function App() {
     }
   };
 
-  // Sidebar Handlers
-  const handleSidebarToggle = async () => {
-    try {
-      console.log("Toggling sidebar...");
-      await bridge.sidebar.toggle();
-      const state = await bridge.sidebar.getState();
-      setSidebarVisible(state.visible);
-      setError(""); // Clear any previous errors
-    } catch (err) {
-      console.error("Failed to toggle sidebar:", err);
-      setError(
-        `Sidebar toggle failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
-    }
-  };
-
-  const handleSidebarShow = async () => {
-    try {
-      console.log("Showing sidebar...");
-      await bridge.sidebar.show();
-      const state = await bridge.sidebar.getState();
-      setSidebarVisible(state.visible);
-      setError(""); // Clear any previous errors
-    } catch (err) {
-      console.error("Failed to show sidebar:", err);
-      setError(
-        `Sidebar show failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
-    }
-  };
-
-  const handleSidebarHide = async () => {
-    try {
-      console.log("Hiding sidebar...");
-      await bridge.sidebar.hide();
-      const state = await bridge.sidebar.getState();
-      setSidebarVisible(state.visible);
-      setError(""); // Clear any previous errors
-    } catch (err) {
-      console.error("Failed to hide sidebar:", err);
-      setError(
-        `Sidebar hide failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
-    }
+  // NEW: Close search function
+  const handleCloseSearch = () => {
+    setIsSearching(false);
+    setSearchMessage("");
   };
 
   return (
-    <>
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React + C Bridge</h1>
-
-      {error && (
+    <div>
+      {/* NEW: Search Header - shows when native search toolbar button is clicked */}
+      {isSearching && (
         <div
           style={{
-            color: "red",
-            margin: "1rem",
-            padding: "0.5rem",
-            border: "1px solid red",
-            borderRadius: "4px",
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: "#007acc",
+            color: "white",
+            padding: "1rem",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            zIndex: 1000,
+            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
           }}
         >
-          Error: {error}
-        </div>
-      )}
-
-      <div className="card">
-        <button onClick={handleDecrement}>-</button>
-        <span
-          style={{ margin: "0 1rem", fontSize: "1.5rem", fontWeight: "bold" }}
-        >
-          Counter: {count}
-        </span>
-        <button onClick={handleIncrement}>+</button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-
-      <div className="card">
-        <button onClick={handleGreet}>Greet from C Backend</button>
-        {greeting && (
-          <div
+          <div>
+            <strong>🔍 {searchMessage}</strong>
+          </div>
+          <button
+            onClick={handleCloseSearch}
             style={{
-              marginTop: "1rem",
-              padding: "1rem",
-              backgroundColor: "#f0f0f0",
+              background: "transparent",
+              border: "1px solid white",
+              color: "white",
+              padding: "0.25rem 0.5rem",
+              cursor: "pointer",
               borderRadius: "4px",
             }}
           >
-            <strong>Response from C:</strong> {greeting}
+            ✕ Close
+          </button>
+        </div>
+      )}
+
+      {/* Main content with top margin when search is active */}
+      <div
+        style={{
+          marginTop: isSearching ? "80px" : "0",
+          transition: "margin-top 0.3s ease",
+          padding: "1rem",
+        }}
+      >
+        <div>
+          <a href="https://vitejs.dev" target="_blank">
+            <img src={viteLogo} className="logo" alt="Vite logo" />
+          </a>
+          <a href="https://react.dev" target="_blank">
+            <img src={reactLogo} className="logo react" alt="React logo" />
+          </a>
+        </div>
+        <h1>Vite + React + C Bridge</h1>
+
+        {error && (
+          <div
+            style={{
+              color: "red",
+              margin: "1rem",
+              padding: "0.5rem",
+              border: "1px solid red",
+              borderRadius: "4px",
+            }}
+          >
+            Error: {error}
           </div>
         )}
-      </div>
 
-      <div className="card">
-        <h3>Sidebar Controls</h3>
-        <div style={{ marginBottom: "1rem" }}>
-          <strong>Sidebar Status:</strong>{" "}
-          {sidebarVisible ? "Visible" : "Hidden"}
+        <div className="card">
+          <button onClick={handleDecrement}>-</button>
+          <span
+            style={{ margin: "0 1rem", fontSize: "1.5rem", fontWeight: "bold" }}
+          >
+            Counter: {count}
+          </span>
+          <button onClick={handleIncrement}>+</button>
+          <p>
+            Edit <code>src/App.tsx</code> and save to test HMR
+          </p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          <button onClick={handleSidebarToggle}>Toggle Sidebar</button>
-          <button onClick={handleSidebarShow}>Show Sidebar</button>
-          <button onClick={handleSidebarHide}>Hide Sidebar</button>
-        </div>
-      </div>
 
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+        <div className="card">
+          <button onClick={handleGreet}>Greet from C Backend</button>
+          {greeting && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                backgroundColor: "#f0f0f0",
+                borderRadius: "4px",
+              }}
+            >
+              <strong>Response from C:</strong> {greeting}
+            </div>
+          )}
+        </div>
+
+        {/* NEW: Instructions for testing native toolbar */}
+        <div className="card">
+          <h3>🔗 Native Toolbar Integration</h3>
+          <p>
+            Try clicking the toolbar buttons to see bidirectional communication:
+          </p>
+          <ul
+            style={{ textAlign: "left", maxWidth: "400px", margin: "0 auto" }}
+          >
+            <li>
+              <strong>🔍 Search:</strong> Shows search header above
+            </li>
+            <li>
+              <strong>⚙️ Settings:</strong> Shows settings alert
+            </li>
+            <li>
+              <strong>📤 Share:</strong> Shows share alert
+            </li>
+            <li>
+              <strong>⭐ Star:</strong> Shows favorites alert
+            </li>
+            <li>
+              <strong>↻ Refresh:</strong> Reloads the webview
+            </li>
+            <li>
+              <strong>← →:</strong> Navigate back/forward
+            </li>
+          </ul>
+        </div>
+
+        {/* Debug section for layout verification */}
+        <div
+          className="card"
+          style={{ backgroundColor: "#f9f9f9", border: "2px dashed #ccc" }}
+        >
+          <h4>🔧 Layout Debug Info</h4>
+          <p style={{ fontSize: "0.9em", color: "#666" }}>
+            This content should be properly separated from the native macOS
+            toolbar above.
+            <br />
+            The webview now uses a container layout that respects toolbar
+            boundaries.
+          </p>
+          <div
+            style={{
+              background: "linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1)",
+              height: "20px",
+              borderRadius: "10px",
+              margin: "10px 0",
+            }}
+          />
+          <small style={{ color: "#888" }}>
+            If you see this content overlapping with toolbar buttons, the layout
+            needs adjustment.
+          </small>
+        </div>
+
+        <p className="read-the-docs">
+          Click on the Vite and React logos to learn more
+        </p>
+      </div>
+    </div>
   );
 }
 

@@ -40,13 +40,6 @@ typedef struct {
     bool enabled;
 } menu_config_t;
 
-typedef struct {
-    char title[64];
-    char action[32];    // e.g., "navigate_to_home", "show_settings"
-    bool enabled;
-    bool separator_after;
-} sidebar_item_config_t;
-
 // Toolbar button configuration
 typedef struct {
     char name[64];         // Button name/title
@@ -63,20 +56,7 @@ typedef struct {
 } toolbar_group_config_t;
 
 typedef struct {
-    char title[64];
-    sidebar_item_config_t items[16];
-    int item_count;
     bool enabled;
-    int width;  // Sidebar width in pixels
-    int max_width;  // Maximum sidebar width in pixels (0 = no limit)
-    bool resizable;
-    bool collapsible;
-    bool start_collapsed;
-} sidebar_config_t;
-
-typedef struct {
-    bool enabled;
-    bool show_toggle_button;  // Show native sidebar toggle button in toolbar
     toolbar_group_config_t left;     // Left toolbar group
     toolbar_group_config_t middle;   // Middle toolbar group  
     toolbar_group_config_t right;    // Right toolbar group
@@ -84,7 +64,6 @@ typedef struct {
 
 typedef struct {
     macos_toolbar_config_t toolbar;
-    sidebar_config_t sidebar;
     bool show_title_bar;  // Show traditional title bar (default: false for modern appearance)
 } macos_config_t;
 

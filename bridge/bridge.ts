@@ -1,12 +1,11 @@
 // Modern Bridge implementation for frontend
-// Clean sidebar-only API without legacy drawer support
 import type {
   BridgeAPI,
   BridgeMessage,
   BridgeCallback,
   WindowSize,
   AppConfig,
-  SidebarState,
+  NativeEventHandler,
 } from "./bridge.d";
 
 // Re-export all types for convenience
@@ -16,12 +15,14 @@ export type {
   BridgeCallback,
   WindowSize,
   AppConfig,
-  SidebarState,
+  NativeEventHandler,
 } from "./bridge.d";
 
 class Bridge implements BridgeAPI {
   private nextCallbackId = 1;
   private callbacks = new Map<number, BridgeCallback>();
+  // NEW: Event listeners for native events
+  private eventListeners = new Map<string, Set<NativeEventHandler>>();
 
   constructor() {
     // Handle responses from native layer
@@ -39,21 +40,6 @@ class Bridge implements BridgeAPI {
         }
         this.callbacks.delete(id);
       }
-    };
-
-    // Set up native sidebar state change handler
-    window.nativeSidebar = {
-      onStateChange: (visible: boolean) => {
-        // Dispatch custom event for sidebar state changes
-        const event = new CustomEvent("sidebarStateChanged", {
-          detail: { visible },
-        });
-        window.dispatchEvent(event);
-
-        console.log(
-          `Native sidebar state changed: ${visible ? "visible" : "hidden"}`
-        );
-      },
     };
   }
 
@@ -86,6 +72,50 @@ class Bridge implements BridgeAPI {
     });
   }
 
+  // NEW: Handle native events (called by native code)
+  onNativeEvent(eventName: string, data?: unknown): void {
+    console.log(`[Bridge] Native event received: ${eventName}`, data);
+
+    const listeners = this.eventListeners.get(eventName);
+    if (listeners) {
+      listeners.forEach((handler) => {
+        try {
+          handler(data);
+        } catch (error) {
+          console.error(
+            `[Bridge] Error handling native event '${eventName}':`,
+            error
+          );
+        }
+      });
+    } else {
+      console.warn(
+        `[Bridge] No listeners registered for native event: ${eventName}`
+      );
+    }
+  }
+
+  // NEW: Add event listener for native events
+  addEventListener(eventName: string, handler: NativeEventHandler): void {
+    if (!this.eventListeners.has(eventName)) {
+      this.eventListeners.set(eventName, new Set());
+    }
+    this.eventListeners.get(eventName)!.add(handler);
+    console.log(`[Bridge] Event listener added for: ${eventName}`);
+  }
+
+  // NEW: Remove event listener
+  removeEventListener(eventName: string, handler: NativeEventHandler): void {
+    const listeners = this.eventListeners.get(eventName);
+    if (listeners) {
+      listeners.delete(handler);
+      if (listeners.size === 0) {
+        this.eventListeners.delete(eventName);
+      }
+      console.log(`[Bridge] Event listener removed for: ${eventName}`);
+    }
+  }
+
   // Window functions
   window = {
     setSize: (size: WindowSize) => this.call<void>("window.setSize", size),
@@ -93,14 +123,6 @@ class Bridge implements BridgeAPI {
     minimize: () => this.call<void>("window.minimize"),
     maximize: () => this.call<void>("window.maximize"),
     restore: () => this.call<void>("window.restore"),
-  };
-
-  // Modern Sidebar functions (NSSplitViewController)
-  sidebar = {
-    toggle: () => this.call<void>("sidebar.toggle"),
-    show: () => this.call<void>("sidebar.show"),
-    hide: () => this.call<void>("sidebar.hide"),
-    getState: () => this.call<SidebarState>("sidebar.getState"),
   };
 
   // System functions
@@ -123,20 +145,6 @@ class Bridge implements BridgeAPI {
   demo = {
     greet: (args: { name?: string }) => this.call<string>("demo.greet", args),
   };
-}
-
-// Augment window interface
-declare global {
-  interface Window {
-    handleBridgeResponse: (
-      id: number,
-      success: boolean,
-      result: unknown
-    ) => void;
-    nativeSidebar?: {
-      onStateChange(visible: boolean): void;
-    };
-  }
 }
 
 // Create and export bridge instance

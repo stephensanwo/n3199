@@ -1,13 +1,8 @@
 // Modern TypeScript definitions for C Bridge API
-// Clean sidebar-only API without legacy drawer support
 
 export interface WindowSize {
   width: number;
   height: number;
-}
-
-export interface SidebarState {
-  visible: boolean;
 }
 
 export interface AppConfig {
@@ -38,6 +33,9 @@ export interface BridgeCallback {
   reject: (error: Error) => void;
 }
 
+// NEW: Native event handling types
+export type NativeEventHandler = (data?: unknown) => void;
+
 export interface BridgeAPI {
   // Window functions
   window: {
@@ -46,14 +44,6 @@ export interface BridgeAPI {
     minimize(): Promise<void>;
     maximize(): Promise<void>;
     restore(): Promise<void>;
-  };
-
-  // Modern Sidebar functions (NSSplitViewController)
-  sidebar: {
-    toggle(): Promise<void>;
-    show(): Promise<void>;
-    hide(): Promise<void>;
-    getState(): Promise<SidebarState>;
   };
 
   // System functions
@@ -74,6 +64,11 @@ export interface BridgeAPI {
   demo: {
     greet(args: { name?: string }): Promise<string>;
   };
+
+  // NEW: Native event handling (for bidirectional communication)
+  onNativeEvent(eventName: string, data?: unknown): void;
+  addEventListener(eventName: string, handler: NativeEventHandler): void;
+  removeEventListener(eventName: string, handler: NativeEventHandler): void;
 }
 
 // Default export type for the bridge instance
@@ -85,10 +80,6 @@ declare global {
   interface Window {
     bridge: BridgeAPI;
     handleBridgeResponse(id: number, success: boolean, result: unknown): void;
-    // Native sidebar state callback for real-time updates
-    nativeSidebar?: {
-      onStateChange(visible: boolean): void;
-    };
     webkit?: {
       messageHandlers: {
         bridge: {

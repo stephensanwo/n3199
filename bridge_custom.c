@@ -3,6 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __APPLE__
+#include "platform.h"
+#include <objc/message.h>
+#include <objc/objc.h>
+#include <objc/runtime.h>
+#endif
+
 // Global counter state
 static int g_counter = 0;
 
@@ -107,6 +114,101 @@ static void bridge_demo_calculate(const char* json_args, const char* callback_id
     free(operation);
 }
 
+// Toolbar action implementations as bridge functions
+static void bridge_toolbar_back(const char *json_args, const char *callback_id, app_window_t *window) {
+  (void)json_args;
+  (void)callback_id; // Unused parameters
+
+  printf("Toolbar: Back button clicked\n");
+
+  if (window && window->native_window) {
+    platform_native_window_t *native =
+        (platform_native_window_t *)window->native_window;
+    if (native->webview) {
+      // Go back in webview
+      ((void (*)(id, SEL))objc_msgSend)(native->webview,
+                                        sel_registerName("goBack"));
+      printf("WebView navigated back\n");
+    }
+  }
+}
+
+static void bridge_toolbar_forward(const char *json_args, const char *callback_id, app_window_t *window) {
+  (void)json_args;
+  (void)callback_id; // Unused parameters
+
+  printf("Toolbar: Forward button clicked\n");
+
+  if (window && window->native_window) {
+    platform_native_window_t *native =
+        (platform_native_window_t *)window->native_window;
+    if (native->webview) {
+      // Go forward in webview
+      ((void (*)(id, SEL))objc_msgSend)(native->webview,
+                                        sel_registerName("goForward"));
+      printf("WebView navigated forward\n");
+    }
+  }
+}
+
+static void bridge_toolbar_refresh(const char *json_args, const char *callback_id, app_window_t *window) {
+  (void)json_args;
+  (void)callback_id; // Unused parameters
+
+  printf("Toolbar: Refresh button clicked\n");
+
+  if (window && window->native_window) {
+    platform_native_window_t *native =
+        (platform_native_window_t *)window->native_window;
+    if (native->webview) {
+      // Reload the webview
+      ((void (*)(id, SEL))objc_msgSend)(native->webview,
+                                        sel_registerName("reload"));
+      printf("WebView refreshed\n");
+    }
+  }
+}
+
+static void bridge_toolbar_star(const char *json_args, const char *callback_id, app_window_t *window) {
+  (void)json_args;
+  (void)callback_id; // Unused parameters
+
+  printf("Toolbar: Star button clicked\n");
+
+  // Send event to frontend to handle favorites
+  bridge_send_event("toggle_favorites", NULL, window);
+}
+
+static void bridge_toolbar_search(const char *json_args, const char *callback_id, app_window_t *window) {
+  (void)json_args;
+  (void)callback_id; // Unused parameters
+
+  printf("Toolbar: Search button clicked\n");
+
+  // Send event to frontend to open search
+  bridge_send_event("open_search", NULL, window);
+}
+
+static void bridge_toolbar_settings(const char *json_args, const char *callback_id, app_window_t *window) {
+  (void)json_args;
+  (void)callback_id; // Unused parameters
+
+  printf("Toolbar: Settings button clicked\n");
+
+  // Send event to frontend to open settings
+  bridge_send_event("open_settings", NULL, window);
+}
+
+static void bridge_toolbar_share(const char *json_args, const char *callback_id, app_window_t *window) {
+  (void)json_args;
+  (void)callback_id; // Unused parameters
+
+  printf("Toolbar: Share button clicked\n");
+
+  // Send event to frontend to show share options
+  bridge_send_event("show_share", NULL, window);
+}
+
 // Register all custom bridge functions
 void bridge_register_custom_functions(void) {
     // Counter functions
@@ -118,4 +220,20 @@ void bridge_register_custom_functions(void) {
     // Demo functions
     bridge_register("demo.greet", bridge_demo_greet, "Greet user by name");
     bridge_register("demo.calculate", bridge_demo_calculate, "Perform calculation");
+
+    // Toolbar action handlers - these can be called from toolbar buttons
+    bridge_register("toolbar_back_callback", bridge_toolbar_back,
+                    "Navigate back in webview");
+    bridge_register("toolbar_forward_callback", bridge_toolbar_forward,
+                    "Navigate forward in webview");
+    bridge_register("toolbar_refresh_callback", bridge_toolbar_refresh,
+                    "Refresh webview content");
+    bridge_register("toolbar_star_callback", bridge_toolbar_star,
+                    "Toggle favorites");
+    bridge_register("toolbar_search_callback", bridge_toolbar_search,
+                    "Open search interface");
+    bridge_register("toolbar_settings_callback", bridge_toolbar_settings,
+                    "Open settings panel");
+    bridge_register("toolbar_share_callback", bridge_toolbar_share,
+                    "Share current content");
 } 
