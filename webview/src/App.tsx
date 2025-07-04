@@ -13,6 +13,8 @@ function App() {
   // NEW: Search state for native toolbar events
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
+  // NEW: State for native alert result
+  const [message, setMessage] = useState("");
 
   // Initialize counter from C backend
   useEffect(() => {
@@ -126,6 +128,30 @@ function App() {
     }
   };
 
+  // NEW: Handle native alert
+  const handleShowNativeAlert = async () => {
+    try {
+      const result = await bridge.ui.showAlert({
+        title: "Custom Alert",
+        message:
+          "This is a customizable native alert dialog with custom title, message, and buttons!",
+        okButton: "Awesome!",
+        cancelButton: "Not Now",
+      });
+
+      if (result) {
+        console.log("User clicked 'Awesome!' button");
+        setMessage("User clicked 'Awesome!' - Alert returned true");
+      } else {
+        console.log("User clicked 'Not Now' button");
+        setMessage("User clicked 'Not Now' - Alert returned false");
+      }
+    } catch (error) {
+      console.error("Failed to show native alert:", error);
+      setMessage("Failed to show native alert");
+    }
+  };
+
   // NEW: Close search function
   const handleCloseSearch = () => {
     setIsSearching(false);
@@ -228,6 +254,24 @@ function App() {
               }}
             >
               <strong>Response from C:</strong> {greeting}
+            </div>
+          )}
+        </div>
+
+        {/* Native Alert Button */}
+        <div className="card">
+          <button onClick={handleShowNativeAlert}>Show Native Alert</button>
+          {message && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                backgroundColor: "#e3f2fd",
+                borderRadius: "4px",
+                border: "1px solid #2196F3",
+              }}
+            >
+              <strong>Native Alert Result:</strong> {message}
             </div>
           )}
         </div>

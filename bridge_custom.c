@@ -195,8 +195,23 @@ static void bridge_toolbar_settings(const char *json_args, const char *callback_
 
   printf("Toolbar: Settings button clicked\n");
 
-  // Send event to frontend to open settings
-  bridge_send_event("open_settings", NULL, window);
+  // Call the direct C function with custom parameters for settings
+  bool result = platform_show_alert_direct(
+    window,
+    "Settings",
+    "This is the settings dialog. Configure your application preferences here.",
+    "Open Settings",
+    "Cancel"
+  );
+  
+  if (result) {
+    printf("User chose to open settings\n");
+    // Testing native reaction to trigger frontend
+    bridge_send_event("open_search", NULL, window);
+    // Here you could add code to actually open a settings window
+  } else {
+    printf("User cancelled settings dialog\n");
+  }
 }
 
 static void bridge_toolbar_share(const char *json_args, const char *callback_id, app_window_t *window) {

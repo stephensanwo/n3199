@@ -152,6 +152,16 @@ class Bridge implements BridgeAPI {
   demo = {
     greet: (args: { name?: string }) => this.call<string>("demo.greet", args),
   };
+
+  // UI functions
+  ui = {
+    showAlert: (params?: {
+      title?: string;
+      message?: string;
+      okButton?: string;
+      cancelButton?: string;
+    }) => this.call<boolean>("ui.showAlert", params),
+  };
 }
 
 // Create and export bridge instance

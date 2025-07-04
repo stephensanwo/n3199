@@ -77,6 +77,40 @@ static void bridge_system_get_config(const char* json_args, const char* callback
     bridge_send_response(callback_id, response, window);
 }
 
+// UI operations
+static void bridge_ui_show_alert(const char* json_args, const char* callback_id, app_window_t* window) {
+    printf("UI: Show alert requested\n");
+    
+    // Parse parameters from JSON, using defaults if not provided
+    char* title = NULL;
+    char* message = NULL;
+    char* ok_button = NULL;
+    char* cancel_button = NULL;
+    
+    if (json_args && strlen(json_args) > 2) { // More than just "{}"
+        title = bridge_get_string_param(json_args, "title");
+        message = bridge_get_string_param(json_args, "message");
+        ok_button = bridge_get_string_param(json_args, "okButton");
+        cancel_button = bridge_get_string_param(json_args, "cancelButton");
+    }
+    
+    // Call flexible platform function with parameters (will use defaults if params are NULL)
+    bool result = platform_show_alert_with_params(window, title, message, ok_button, cancel_button);
+    
+    // Free allocated strings
+    if (title) free(title);
+    if (message) free(message);
+    if (ok_button) free(ok_button);
+    if (cancel_button) free(cancel_button);
+    
+    // Send response based on result
+    if (result) {
+        bridge_send_response(callback_id, "true", window);
+    } else {
+        bridge_send_response(callback_id, "false", window);
+    }
+}
+
 // Register all built-in bridge functions
 void bridge_register_builtin_functions(void) {
     // Window functions
@@ -90,6 +124,9 @@ void bridge_register_builtin_functions(void) {
     bridge_register("system.getPlatform", bridge_system_get_platform, "Get platform name");
     bridge_register("system.getVersion", bridge_system_get_version, "Get application version");
     bridge_register("system.getConfig", bridge_system_get_config, "Get application configuration");
+    
+    // UI functions
+    bridge_register("ui.showAlert", bridge_ui_show_alert, "Show native alert dialog");
     
     // Streaming functions
     bridge_register("streaming.getConfig", bridge_streaming_get_config, "Get streaming configuration");

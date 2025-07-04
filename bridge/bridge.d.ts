@@ -75,6 +75,16 @@ export interface BridgeAPI {
     greet(args: { name?: string }): Promise<string>;
   };
 
+  // UI functions
+  ui: {
+    showAlert(params?: {
+      title?: string;
+      message?: string;
+      okButton?: string;
+      cancelButton?: string;
+    }): Promise<boolean>;
+  };
+
   // NEW: Native event handling (for bidirectional communication)
   onNativeEvent(eventName: string, data?: unknown): void;
   addEventListener(eventName: string, handler: NativeEventHandler): void;

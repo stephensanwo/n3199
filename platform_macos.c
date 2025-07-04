@@ -1639,4 +1639,94 @@ static id create_toolbar_button_from_config(const toolbar_button_config_t* confi
     return create_toolbar_button_with_symbol(config->icon, config->action, config->tooltip, window);
 }
 
+// ============================================================================
+// PLATFORM-SPECIFIC UI FUNCTIONS
+// ============================================================================
+
+// Flexible alert function with parameters
+bool platform_show_alert_with_params(app_window_t* window, const char* title, const char* message, const char* ok_button, const char* cancel_button) {
+    if (!window) {
+        printf("Failed to show alert: No window provided\n");
+        return false;
+    }
+    
+    // Use defaults if parameters are null or empty
+    const char* alert_title = (title && strlen(title) > 0) ? title : "Alert";
+    const char* alert_message = (message && strlen(message) > 0) ? message : "This is a native alert dialog.";
+    const char* ok_text = (ok_button && strlen(ok_button) > 0) ? ok_button : "OK";
+    const char* cancel_text = (cancel_button && strlen(cancel_button) > 0) ? cancel_button : "Cancel";
+    
+    printf("Opening native macOS alert dialog: %s\n", alert_title);
+    
+    // Create NSAlert for alert dialog
+    Class NSAlert = objc_getClass("NSAlert");
+    Class NSString = objc_getClass("NSString");
+    
+    if (!NSAlert || !NSString) {
+        printf("Failed to get required classes for alert dialog\n");
+        return false;
+    }
+    
+    // Create alert instance
+    id alert = ((id (*)(id, SEL))objc_msgSend)(
+        ((id (*)(id, SEL))objc_msgSend)((id)NSAlert, sel_registerName("alloc")),
+        sel_registerName("init")
+    );
+    
+    if (!alert) {
+        printf("Failed to create NSAlert instance\n");
+        return false;
+    }
+    
+    // Set dialog properties
+    id messageText = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        alert_title
+    );
+    ((void (*)(id, SEL, id))objc_msgSend)(alert, sel_registerName("setMessageText:"), messageText);
+    
+    id informativeText = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        alert_message
+    );
+    ((void (*)(id, SEL, id))objc_msgSend)(alert, sel_registerName("setInformativeText:"), informativeText);
+    
+    // Set alert style to informational
+    ((void (*)(id, SEL, long))objc_msgSend)(alert, sel_registerName("setAlertStyle:"), 1); // NSAlertStyleInformational
+    
+    // Add buttons
+    id okButtonText = ((id (*)(id, SEL, const char*))objc_msgSend)(
+        (id)NSString,
+        sel_registerName("stringWithUTF8String:"),
+        ok_text
+    );
+    ((void (*)(id, SEL, id))objc_msgSend)(alert, sel_registerName("addButtonWithTitle:"), okButtonText);
+    
+    // Only add cancel button if cancel_button is not null (allows single-button alerts)
+    if (cancel_button != NULL) {
+        id cancelButtonText = ((id (*)(id, SEL, const char*))objc_msgSend)(
+            (id)NSString,
+            sel_registerName("stringWithUTF8String:"),
+            cancel_text
+        );
+        ((void (*)(id, SEL, id))objc_msgSend)(alert, sel_registerName("addButtonWithTitle:"), cancelButtonText);
+    }
+    
+    // Show the dialog modally
+    long response = ((long (*)(id, SEL))objc_msgSend)(alert, sel_registerName("runModal"));
+    printf("Native alert dialog closed with response: %ld\n", response);
+    
+    // Return true if OK was pressed (response 1000), false if Cancel (response 1001)
+    return (response == 1000);
+}
+
+// Direct C function for native calls (no bridge involved)
+bool platform_show_alert_direct(app_window_t* window, const char* title, const char* message, const char* ok_button, const char* cancel_button) {
+    // This is a direct wrapper around the flexible alert function
+    // It can be called from C code without involving the bridge system
+    return platform_show_alert_with_params(window, title, message, ok_button, cancel_button);
+}
+
 #endif // __APPLE__ 

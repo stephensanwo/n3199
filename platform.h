@@ -80,4 +80,10 @@ void platform_linux_setup_toolbar(app_window_t* window);
 // WebView functions
 void platform_webview_load_html(app_window_t* window, const char* html);
 
+// Platform-specific UI functions
+bool platform_show_alert_with_params(app_window_t* window, const char* title, const char* message, const char* ok_button, const char* cancel_button);
+
+// Direct C function for native calls (no bridge involved)
+bool platform_show_alert_direct(app_window_t* window, const char* title, const char* message, const char* ok_button, const char* cancel_button);
+
 #endif // PLATFORM_H 
