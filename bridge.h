@@ -43,6 +43,11 @@ void bridge_handle_toolbar_action(const char* action_name, app_window_t* window)
 void bridge_send_response(const char* callback_id, const char* result, app_window_t* window);
 void bridge_send_error(const char* callback_id, const char* error, app_window_t* window);
 
+// NEW: Streaming bridge functions
+void bridge_streaming_get_config(const char* json_args, const char* callback_id, app_window_t* window);
+void bridge_streaming_get_server_url(const char* json_args, const char* callback_id, app_window_t* window);
+bool bridge_streaming_register_function(const char* name, const char* endpoint, int interval_ms, const char* description);
+
 // JSON helper functions
 char* bridge_get_string_param(const char* json_args, const char* key);
 int bridge_get_int_param(const char* json_args, const char* key);

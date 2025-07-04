@@ -4,12 +4,16 @@
 #include "config.h"
 #include "platform.h"
 #include "bridge.h"
+#include "streaming.h"
 
 // Global window reference for signal handling
 app_window_t* g_main_window = NULL;
 
 static void cleanup(void) {
     if (g_main_window) {
+        // Cleanup streaming system
+        streaming_cleanup();
+        
         // Cleanup bridge system
         bridge_cleanup();
         
@@ -89,6 +93,23 @@ int main(int argc, char* argv[]) {
             bridge_list_functions();
         } else {
             printf("Failed to initialize bridge system\n");
+        }
+        
+        // Initialize streaming system if enabled
+        if (app_config->streaming.enabled) {
+            printf("Initializing streaming system...\n");
+            if (streaming_init(&app_config->streaming, g_main_window)) {
+                printf("Streaming system initialized successfully\n");
+                
+                // Start streaming server
+                if (streaming_start_server()) {
+                    printf("Streaming server started successfully\n");
+                } else {
+                    printf("Failed to start streaming server\n");
+                }
+            } else {
+                printf("Failed to initialize streaming system\n");
+            }
         }
         
         if (app_config->development.debug_mode) {

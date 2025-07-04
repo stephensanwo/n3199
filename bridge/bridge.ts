@@ -132,6 +132,13 @@ class Bridge implements BridgeAPI {
     getConfig: () => this.call<AppConfig>("system.getConfig"),
   };
 
+  // Streaming functions
+  streaming = {
+    getConfig: () =>
+      this.call<{ enabled: boolean; port: number }>("streaming.getConfig"),
+    getServerUrl: () => this.call<string>("streaming.getServerUrl"),
+  };
+
   // Counter functions
   counter = {
     increment: () => this.call<number>("counter.increment"),

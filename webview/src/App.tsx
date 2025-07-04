@@ -3,6 +3,8 @@ import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import "./App.css";
 import bridge from "./bridge/bridge";
+import StreamingData from "./components/StreamingData";
+import TcpDumpStream from "./components/TcpDumpStream";
 
 function App() {
   const [count, setCount] = useState(0);
@@ -229,6 +231,12 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* NEW: Streaming Data Component */}
+        <StreamingData />
+
+        {/* NEW: TCP Dump Stream Component */}
+        <TcpDumpStream />
 
         {/* NEW: Instructions for testing native toolbar */}
         <div className="card">

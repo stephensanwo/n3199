@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define MAX_BRIDGE_FUNCTIONS 256
 
@@ -350,4 +351,39 @@ void bridge_handle_toolbar_action(const char* action_name, app_window_t* window)
     bridge_send_event("toolbar_action", event_data, window);
     
     printf("Toolbar action '%s' sent as frontend event\n", action_name);
+}
+
+// NEW: Streaming bridge functions
+void bridge_streaming_get_config(const char* json_args, const char* callback_id, app_window_t* window) {
+    (void)json_args; // Mark parameter as unused
+    
+    if (!window || !window->config || !window->config->streaming.enabled) {
+        bridge_send_error(callback_id, "Streaming not enabled", window);
+        return;
+    }
+    
+    // Create streaming config JSON
+    char* result = malloc(256);
+    snprintf(result, 256, "{\"enabled\": true, \"port\": %d}", window->config->streaming.server.port);
+    
+    bridge_send_response(callback_id, result, window);
+    free(result);
+}
+
+void bridge_streaming_get_server_url(const char* json_args, const char* callback_id, app_window_t* window) {
+    (void)json_args; // Mark parameter as unused
+    
+    if (!window || !window->config || !window->config->streaming.enabled) {
+        bridge_send_error(callback_id, "Streaming not enabled", window);
+        return;
+    }
+    
+    // Create server URL using the configured host
+    char* result = malloc(128);
+    snprintf(result, 128, "\"http://%s:%d\"", 
+             window->config->streaming.server.host, 
+             window->config->streaming.server.port);
+    
+    bridge_send_response(callback_id, result, window);
+    free(result);
 } 

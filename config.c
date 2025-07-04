@@ -50,6 +50,28 @@ static char* find_json_value(const char* json, const char* key) {
         // String value
         value_start++;
         value_end = strchr(value_start, '"');
+    } else if (*value_start == '[') {
+        // Array value - need to find the matching closing bracket
+        int bracket_count = 1;
+        value_end = value_start + 1;
+        while (*value_end && bracket_count > 0) {
+            if (*value_end == '[') bracket_count++;
+            else if (*value_end == ']') bracket_count--;
+            value_end++;
+        }
+        // Include the entire array including brackets
+        value_start = value_start;  // Keep the opening bracket
+    } else if (*value_start == '{') {
+        // Object value - need to find the matching closing brace
+        int brace_count = 1;
+        value_end = value_start + 1;
+        while (*value_end && brace_count > 0) {
+            if (*value_end == '{') brace_count++;
+            else if (*value_end == '}') brace_count--;
+            value_end++;
+        }
+        // Include the entire object including braces
+        value_start = value_start;  // Keep the opening brace
     } else if (isdigit(*value_start) || *value_start == '-') {
         // Number value
         while (*value_end && (isdigit(*value_end) || *value_end == '.' || *value_end == '-')) {
@@ -337,6 +359,158 @@ static void parse_webview_framework_config(const char* json, webview_framework_c
     free(webview_content);
 }
 
+// NEW: Parse streaming configuration
+static void parse_streaming_config(const char* json, streaming_config_t* config) {
+    // Set defaults first
+    config->enabled = false;
+    strcpy(config->server.host, "127.0.0.1");
+    config->server.port = 8080;
+    config->server.max_connections = 10;
+    config->stream_count = 0;
+
+    // Parse streaming enabled flag
+    config->enabled = parse_nested_bool(json, "streaming", "enabled", false);
+    
+    printf("DEBUG: Streaming enabled: %s\n", config->enabled ? "true" : "false");
+    
+    if (!config->enabled) {
+        return; // Skip parsing if streaming is disabled
+    }
+
+    // Parse server configuration
+    char* server_content = find_nested_json_value(json, "streaming", "server");
+    if (server_content) {
+        char* value;
+        
+        value = find_json_value(server_content, "host");
+        if (value) {
+            strncpy(config->server.host, value, sizeof(config->server.host) - 1);
+            config->server.host[sizeof(config->server.host) - 1] = '\0';
+            free(value);
+        }
+        
+        value = find_json_value(server_content, "port");
+        if (value) {
+            config->server.port = atoi(value);
+            free(value);
+        }
+        
+        value = find_json_value(server_content, "max_connections");
+        if (value) {
+            config->server.max_connections = atoi(value);
+            free(value);
+        }
+        
+        free(server_content);
+    }
+
+    // Parse streams array
+    printf("DEBUG: Looking for streams array...\n");
+    char* streams_content = find_nested_json_value(json, "streaming", "streams");
+    if (streams_content) {
+        printf("DEBUG: Found streams content: %.200s...\n", streams_content);
+        
+        // Find the array start
+        char* array_start = strchr(streams_content, '[');
+        if (array_start) {
+            printf("DEBUG: Found array start\n");
+            char* current = array_start + 1;
+            int stream_index = 0;
+            
+            // Parse each stream object
+            while (current && *current && stream_index < 16) {
+                // Find next object start
+                char* obj_start = strchr(current, '{');
+                if (!obj_start) break;
+                
+                printf("DEBUG: Parsing stream object %d\n", stream_index);
+                
+                // Find matching closing brace
+                int brace_count = 1;
+                char* obj_end = obj_start + 1;
+                while (*obj_end && brace_count > 0) {
+                    if (*obj_end == '{') brace_count++;
+                    else if (*obj_end == '}') brace_count--;
+                    obj_end++;
+                }
+                
+                if (brace_count == 0) {
+                    // Extract the object
+                    size_t obj_len = obj_end - obj_start;
+                    char* obj_content = malloc(obj_len + 1);
+                    strncpy(obj_content, obj_start, obj_len);
+                    obj_content[obj_len] = '\0';
+                    
+                    printf("DEBUG: Stream object content: %s\n", obj_content);
+                    
+                    // Parse stream object
+                    stream_function_config_t* stream = &config->streams[stream_index];
+                    
+                    char* value;
+                    value = find_json_value(obj_content, "name");
+                    if (value) {
+                        strncpy(stream->name, value, sizeof(stream->name) - 1);
+                        stream->name[sizeof(stream->name) - 1] = '\0';
+                        printf("DEBUG: Stream name: %s\n", stream->name);
+                        free(value);
+                    }
+                    
+                    value = find_json_value(obj_content, "endpoint");
+                    if (value) {
+                        strncpy(stream->endpoint, value, sizeof(stream->endpoint) - 1);
+                        stream->endpoint[sizeof(stream->endpoint) - 1] = '\0';
+                        printf("DEBUG: Stream endpoint: %s\n", stream->endpoint);
+                        free(value);
+                    }
+                    
+                    value = find_json_value(obj_content, "handler");
+                    if (value) {
+                        strncpy(stream->handler, value, sizeof(stream->handler) - 1);
+                        stream->handler[sizeof(stream->handler) - 1] = '\0';
+                        printf("DEBUG: Stream handler: %s\n", stream->handler);
+                        free(value);
+                    }
+                    
+                    value = find_json_value(obj_content, "interval_ms");
+                    if (value) {
+                        stream->interval_ms = atoi(value);
+                        printf("DEBUG: Stream interval: %d\n", stream->interval_ms);
+                        free(value);
+                    }
+                    
+                    value = find_json_value(obj_content, "enabled");
+                    if (value) {
+                        stream->enabled = (strcmp(value, "true") == 0);
+                        printf("DEBUG: Stream enabled: %s\n", stream->enabled ? "true" : "false");
+                        free(value);
+                    }
+                    
+                    value = find_json_value(obj_content, "description");
+                    if (value) {
+                        strncpy(stream->description, value, sizeof(stream->description) - 1);
+                        stream->description[sizeof(stream->description) - 1] = '\0';
+                        free(value);
+                    }
+                    
+                    free(obj_content);
+                    stream_index++;
+                }
+                
+                current = obj_end;
+            }
+            
+            config->stream_count = stream_index;
+            printf("DEBUG: Final stream count: %d\n", config->stream_count);
+        } else {
+            printf("DEBUG: No array start found in streams content\n");
+        }
+        
+        free(streams_content);
+    } else {
+        printf("DEBUG: No streams content found\n");
+    }
+}
+
 static void parse_toolbar_button(const char* json, const char* group_section, int button_index, toolbar_button_config_t* button) {
     // Initialize button with empty values
     memset(button, 0, sizeof(toolbar_button_config_t));
@@ -556,6 +730,9 @@ app_configuration_t* load_config(const char* config_file) {
     // Parse webview framework config
     parse_webview_framework_config(json_content, &config->webview.framework);
     
+    // NEW: Parse streaming configuration
+    parse_streaming_config(json_content, &config->streaming);
+    
     free(json_content);
     return config;
 }
@@ -592,6 +769,25 @@ void print_config(const app_configuration_t* config) {
         printf("Build Directory: %s\n", config->webview.framework.build_dir);
         printf("Dev Mode: %s\n", config->webview.framework.dev_mode ? "Yes" : "No");
         printf("==========================================\n");
+    }
+    
+    // NEW: Debug streaming configuration
+    if (config->streaming.enabled) {
+        printf("\n=== Streaming Configuration ===\n");
+        printf("Streaming Server: %s:%d\n", config->streaming.server.host, config->streaming.server.port);
+        printf("Max Connections: %d\n", config->streaming.server.max_connections);
+        printf("Configured Streams: %d\n", config->streaming.stream_count);
+        
+        for (int i = 0; i < config->streaming.stream_count; i++) {
+            const stream_function_config_t* stream = &config->streaming.streams[i];
+            printf("  Stream %d: %s\n", i + 1, stream->name);
+            printf("    Endpoint: %s\n", stream->endpoint);
+            printf("    Handler: %s\n", stream->handler);
+            printf("    Interval: %d ms\n", stream->interval_ms);
+            printf("    Enabled: %s\n", stream->enabled ? "Yes" : "No");
+            printf("    Description: %s\n", stream->description);
+        }
+        printf("===============================\n");
     }
     
     printf("=================================\n\n");

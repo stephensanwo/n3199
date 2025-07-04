@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.." || exit 1
 CC="gcc"
 CFLAGS="-Wall -Wextra -std=c99"
 PLATFORM_FLAGS="-DPLATFORM_MACOS -framework Cocoa -framework Foundation -framework WebKit"
-SRCS="main.c config.c webview_framework.c platform_macos.c bridge.c bridge_builtin.c bridge_custom.c"
+SRCS="main.c config.c webview_framework.c platform_macos.c bridge.c bridge_builtin.c bridge_custom.c streaming.c streaming_builtin.c streaming_custom.c"
 OUTPUT_DIR="output"
 TARGET="$OUTPUT_DIR/desktop_app"
 

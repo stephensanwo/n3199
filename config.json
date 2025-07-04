@@ -233,6 +233,32 @@
     },
     "show_title_bar": false
   },
+  "streaming": {
+    "enabled": true,
+    "server": {
+      "host": "127.0.0.1",
+      "port": 8080,
+      "max_connections": 10
+    },
+    "streams": [
+      {
+        "name": "system.memory",
+        "endpoint": "/stream/memory",
+        "handler": "stream_system_memory",
+        "interval_ms": 1000,
+        "enabled": true,
+        "description": "Real-time system memory usage"
+      },
+      {
+        "name": "network.tcpdump",
+        "endpoint": "/stream/tcpdump",
+        "handler": "stream_network_tcpdump",
+        "interval_ms": 2000,
+        "enabled": true,
+        "description": "Real-time network TCP dump logs"
+      }
+    ]
+  },
   "development": {
     "debug_mode": true,
     "console_logging": true

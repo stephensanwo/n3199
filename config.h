@@ -114,11 +114,35 @@ typedef struct {
     webview_framework_config_t framework;  // Framework-specific configuration
 } webview_config_t;
 
+// NEW: Streaming configuration structures
+typedef struct {
+    char host[64];                    // Server host (e.g., "127.0.0.1")
+    int port;                         // Server port (e.g., 8080)
+    int max_connections;              // Maximum concurrent connections
+} stream_server_config_t;
+
+typedef struct {
+    char name[64];                    // Stream function name (e.g., "system.memory")
+    char endpoint[128];               // HTTP endpoint (e.g., "/stream/memory")
+    char handler[64];                 // Handler function name (e.g., "stream_system_memory")
+    int interval_ms;                  // Update interval in milliseconds
+    bool enabled;                     // Whether stream is enabled
+    char description[256];            // Description of the stream
+} stream_function_config_t;
+
+typedef struct {
+    bool enabled;                     // Whether streaming is enabled
+    stream_server_config_t server;    // Server configuration
+    stream_function_config_t streams[16];  // Array of stream functions
+    int stream_count;                 // Number of configured streams
+} streaming_config_t;
+
 typedef struct {
     app_config_t app;
     window_config_t window;
     menubar_config_t menubar;
     webview_config_t webview;
+    streaming_config_t streaming;     // NEW: Streaming configuration
     
     #ifdef PLATFORM_MACOS
     macos_config_t macos;

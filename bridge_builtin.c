@@ -90,4 +90,8 @@ void bridge_register_builtin_functions(void) {
     bridge_register("system.getPlatform", bridge_system_get_platform, "Get platform name");
     bridge_register("system.getVersion", bridge_system_get_version, "Get application version");
     bridge_register("system.getConfig", bridge_system_get_config, "Get application configuration");
+    
+    // Streaming functions
+    bridge_register("streaming.getConfig", bridge_streaming_get_config, "Get streaming configuration");
+    bridge_register("streaming.getServerUrl", bridge_streaming_get_server_url, "Get streaming server URL");
 } 

@@ -19,6 +19,10 @@ export interface AppConfig {
   development: {
     debug_mode: boolean;
   };
+  streaming?: {
+    enabled: boolean;
+    port: number;
+  };
 }
 
 // Internal message types
@@ -50,6 +54,12 @@ export interface BridgeAPI {
   system: {
     getPlatform(): Promise<"macos" | "windows" | "linux">;
     getConfig(): Promise<AppConfig>;
+  };
+
+  // Streaming functions
+  streaming: {
+    getConfig(): Promise<{ enabled: boolean; port: number }>;
+    getServerUrl(): Promise<string>;
   };
 
   // Counter functions

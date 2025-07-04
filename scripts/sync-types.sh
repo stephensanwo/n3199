@@ -56,6 +56,14 @@ print_status "Linked bridge.d.ts"
 ln -sf "$RELATIVE_BRIDGE_DIR/bridge.ts" "bridge.ts"
 print_status "Linked bridge.ts"
 
+# Link the streaming type definitions
+ln -sf "$RELATIVE_BRIDGE_DIR/stream.d.ts" "stream.d.ts"
+print_status "Linked stream.d.ts"
+
+# Link the streaming implementation
+ln -sf "$RELATIVE_BRIDGE_DIR/stream.ts" "stream.ts"
+print_status "Linked stream.ts"
+
 # Go back to project root
 cd "$PROJECT_ROOT"
 
@@ -84,4 +92,6 @@ echo "Bridge files are now linked from: bridge/ -> webview/src/bridge/"
 echo ""
 echo "Files linked:"
 echo "  - bridge.d.ts (type definitions)"
-echo "  - bridge.ts (implementation)" 
+echo "  - bridge.ts (implementation)"
+echo "  - stream.d.ts (streaming type definitions)"
+echo "  - stream.ts (streaming implementation)" 
