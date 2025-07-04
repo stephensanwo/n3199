@@ -140,10 +140,14 @@ void stream_system_memory(const char* stream_name, char* output_buffer, size_t b
     (void)stream_name; // Unused parameter
     
 #ifdef __APPLE__
-    // Get total physical memory using syscall
-    uint64_t total_memory_bytes;
-    size_t size = sizeof(total_memory_bytes);
-    if (sysctlbyname("hw.memsize", &total_memory_bytes, &size, NULL, 0) != 0) {
+    // Get total physical memory using sysctl
+    int mib[2];
+    uint64_t physical_memory;
+    size_t size = sizeof(physical_memory);
+    
+    mib[0] = CTL_HW;
+    mib[1] = HW_MEMSIZE;
+    if (sysctl(mib, 2, &physical_memory, &size, NULL, 0) != 0) {
         time_t now = time(NULL);
         snprintf(output_buffer, buffer_size,
                 "{\"timestamp\":%ld,\"error\":\"Failed to get total memory size\"}",
@@ -151,15 +155,15 @@ void stream_system_memory(const char* stream_name, char* output_buffer, size_t b
         return;
     }
     
-    // Get memory pressure (used memory)
-    uint64_t memory_pressure = 0;
-    size = sizeof(memory_pressure);
-    sysctlbyname("vm.memory_pressure", &memory_pressure, &size, NULL, 0);
-    
     // Get page size
-    size_t page_size;
-    size = sizeof(page_size);
-    sysctlbyname("hw.pagesize", &page_size, &size, NULL, 0);
+    vm_size_t page_size;
+    if (host_page_size(mach_host_self(), &page_size) != KERN_SUCCESS) {
+        time_t now = time(NULL);
+        snprintf(output_buffer, buffer_size,
+                "{\"timestamp\":%ld,\"error\":\"Failed to get page size\"}",
+                now);
+        return;
+    }
     
     // Get VM statistics for detailed breakdown
     vm_statistics64_data_t vm_stat;
@@ -168,21 +172,22 @@ void stream_system_memory(const char* stream_name, char* output_buffer, size_t b
     if (host_statistics64(mach_host_self(), HOST_VM_INFO64, 
                          (host_info64_t)&vm_stat, &count) == KERN_SUCCESS) {
         
-        // Calculate memory values in MB using actual physical memory
-        uint64_t total_memory = total_memory_bytes / (1024 * 1024);
+        // Calculate memory values in MB using the reliable method
+        uint64_t total_memory = physical_memory / (1024 * 1024);
         uint64_t free_memory = vm_stat.free_count * page_size / (1024 * 1024);
         uint64_t active_memory = vm_stat.active_count * page_size / (1024 * 1024);
         uint64_t inactive_memory = vm_stat.inactive_count * page_size / (1024 * 1024);
         uint64_t wired_memory = vm_stat.wire_count * page_size / (1024 * 1024);
         uint64_t compressed_memory = vm_stat.compressor_page_count * page_size / (1024 * 1024);
         
-        // Calculate used memory properly: total - free
-        uint64_t used_memory = total_memory - free_memory;
+        // Calculate available memory (free + inactive) and actual used memory
+        uint64_t available_memory = free_memory + inactive_memory;
+        uint64_t used_memory = total_memory - available_memory;
         
         // Get current timestamp
         time_t now = time(NULL);
         
-        // Format JSON response with all memory details
+        // Format JSON response with corrected memory calculations
         snprintf(output_buffer, buffer_size,
                 "{\"timestamp\":%ld,\"total_mb\":%llu,\"used_mb\":%llu,\"free_mb\":%llu,\"active_mb\":%llu,\"inactive_mb\":%llu,\"wired_mb\":%llu,\"compressed_mb\":%llu}",
                 now, total_memory, used_memory, free_memory, active_memory, inactive_memory, wired_memory, compressed_memory);
