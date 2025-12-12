@@ -249,7 +249,7 @@ function App() {
               style={{
                 marginTop: "1rem",
                 padding: "1rem",
-                backgroundColor: "#f0f0f0",
+                backgroundColor: "#262626",
                 borderRadius: "4px",
               }}
             >
@@ -266,7 +266,7 @@ function App() {
               style={{
                 marginTop: "1rem",
                 padding: "1rem",
-                backgroundColor: "#e3f2fd",
+                backgroundColor: "#262626",
                 borderRadius: "4px",
                 border: "1px solid #2196F3",
               }}
